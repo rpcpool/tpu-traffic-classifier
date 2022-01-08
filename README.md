@@ -24,7 +24,7 @@ If you provide you validator pubkey it will assume that your validator runs on l
 
 Run: `go run .`
 
-Build: `go build -o tpu-traffic-classifier ./main.go`
+Build: `go build -o tpu-traffic-classifier .`
 
 ```
 $ ./tpu-traffic-classifier --help
