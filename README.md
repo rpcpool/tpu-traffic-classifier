@@ -1,5 +1,6 @@
 # TPU traffic classifier
 
+
 This small program creates ipsets and iptables rules for nodes in the Solana network.
 
 By default, it creates and maintains the following ipsets:
@@ -15,6 +16,10 @@ It also uses the PREROUTING tables to permanently mark traffic from these sets o
  - `1`: unstaked
  - `3`: staked
  - `9`: high staked
+
+##  Running
+
+`go run ./main.go`
 
 ## Traffic shaping
 
