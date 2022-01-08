@@ -7,7 +7,7 @@ unstaked_class:
 staked_classes:
   - name: solana-staked
     stake_percentage: 0
-    fwmark: 9
+    fwmark: 3
   - name: solana-high-staked 
     stake_percentage: 0.01
-    fwmark: 3
+    fwmark: 9

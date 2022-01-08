@@ -45,3 +45,28 @@ iptables -I solana-tpu-custom -m set --match-set solana-unstaked -j ACCEPT
 iptables -I solana-tpu-custom -j DROP
 ```
 
+
+## Example iptables generated chains
+
+```
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+:solana-tpu - [0:0]
+:solana-tpu-custom - [0:0]
+-A INPUT -p udp -m udp --dport 8004 -j solana-tpu
+-A solana-tpu -j solana-tpu-custom
+COMMIT
+```
+
+```
+*mangle
+:PREROUTING ACCEPT [0:0]
+:solana-nodes - [0:0]
+-A PREROUTING -p udp -m udp --dport 8004 -j solana-nodes
+-A solana-nodes -m set --match-set solana-high-staked src -j MARK --set-xmark 0x9/0xffffffff
+-A solana-nodes -m set --match-set solana-staked src -j MARK --set-xmark 0x3/0xffffffff
+-A solana-nodes -m set --match-set solana-unstaked src -j MARK --set-xmark 0x1/0xffffffff
+COMMIT
+```
