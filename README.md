@@ -17,13 +17,31 @@ It also uses the PREROUTING tables to permanently mark traffic from these sets o
  - `3`: staked
  - `9`: high staked
 
+If you provide you validator pubkey it will assume that your validator runs on localhost and it will lookup the TPU port of the validator and enable the firwalling rules. If you do not provide your validator pubkey, all UDP traffic passing through this host will be passed through the chains created by this tool.
+
 ##  Running
 
-`go run ./main.go`
+Run: `go run ./main.go`
+Build: `go build -o tpu-traffic-classifier ./main.go
+
+```
+$ ./tpu-traffic-classifier --help
+Usage of ./tpu-traffic-classifier:
+  -config-file string
+        configuration file (default "config.yml")
+  -pubkey string
+        validator-pubkey
+  -rpc-uri string
+        the rpc uri to use (default "https://api.mainnet-beta.solana.com")
+```
 
 ## Traffic shaping
 
+You can use the fwmarks set by this tool to create traffic classes for QoS/traffic shaping.
+
 ## Firewalling
+
+**If you do not provide a validator pubkey, then all UDP traffic will pass through this port**.
 
 You can add rules to `solana-tpu-custom`. For instance if you wanted to temporarily close TPU port you can run:
 
@@ -37,7 +55,7 @@ If you would like to drop all traffic to TPU port apart from validators (staked 
 
 ```
 iptables -I solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
-iptables -I solana-tpu-custom -m set --match-set solana-highstaked -j ACCEPT
+iptables -I solana-tpu-custom -m set --match-set solana-high-staked -j ACCEPT
 iptables -I solana-tpu-custom -j DROP
 ```
 
@@ -45,7 +63,7 @@ If you would only allow nodes in gossip to send to your TPU:
 
 ```
 iptables -I solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
-iptables -I solana-tpu-custom -m set --match-set solana-highstaked -j ACCEPT
+iptables -I solana-tpu-custom -m set --match-set solana-high-staked -j ACCEPT
 iptables -I solana-tpu-custom -m set --match-set solana-unstaked -j ACCEPT
 iptables -I solana-tpu-custom -j DROP
 ```
