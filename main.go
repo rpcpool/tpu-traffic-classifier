@@ -65,6 +65,30 @@ func createChain(ipt *iptables.IPTables, table string, filterChain string) {
 	}
 }
 
+func deleteMangleInputRules(ipt *iptables.IPTables, port, mangleChain, filterChain string) {
+	ipt.Delete("mangle", "PREROUTING", "-p", "udp", "--dport", port, "-j", mangleChain)
+	ipt.Delete("filter", "INPUT", "-p", "udp", "--dport", port, "-j", filterChain)
+}
+
+func insertMangleInputRules(ipt *iptables.IPTables, port, mangleChain, filterChain string) {
+	err := ipt.AppendUnique("mangle", "PREROUTING", "-p", "udp", "--dport", port, "-j", mangleChain)
+	if err != nil {
+		log.Println("couldn't add mangle rule for port", port, err)
+	}
+
+	exists, err := ipt.Exists("filter", "INPUT", "-p", "udp", "--dport", port, "-j", filterChain)
+	if err != nil {
+		log.Println("couldn't add filter rule for port", port, err)
+	}
+
+	if !exists {
+		err = ipt.Insert("filter", "INPUT", 1, "-p", "udp", "--dport", port, "-j", filterChain)
+		if err != nil {
+			log.Println("couldn't add filter rule for port", port, err)
+		}
+	}
+}
+
 func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorPorts *ValidatorPorts) {
 	<-c
 
@@ -79,12 +103,9 @@ func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorP
 
 	// We didn't find the TPU port so we never added those rules
 	if validatorPorts != nil {
-		ipt.Delete("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.TPUstr(), "-j", mangleChain)
-		ipt.Delete("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.TPUstr(), "-j", filterChain)
-		ipt.Delete("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.Fwdstr(), "-j", mangleChain)
-		ipt.Delete("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.Fwdstr(), "-j", filterChain+"-fwd")
-		ipt.Delete("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.Votestr(), "-j", mangleChain)
-		ipt.Delete("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.Votestr(), "-j", filterChain+"-vote")
+		deleteMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
+		deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
+		deleteMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
 	}
 
 	// Just in case, clean these rules up
@@ -295,39 +316,19 @@ func main() {
 							continue
 						}
 
+						if validatorPorts != nil {
+							if validatorPorts.TPU != uint16(port) {
+								// TPU has changed, clean up before re-adding
+								deleteMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
+								deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
+								deleteMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
+							}
+						}
 						validatorPorts = NewValidatorPorts(uint16(port))
 
-						// Mangle rules
-						err = ipt.AppendUnique("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.TPUstr(), "-j", mangleChain)
-						if err != nil {
-							log.Println("couldn't add mangle rule for TPU", err)
-						}
-
-						err = ipt.AppendUnique("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.Fwdstr(), "-j", mangleChain)
-						if err != nil {
-							log.Println("couldn't add mangle rule for TPUfwd", err)
-						}
-
-						err = ipt.AppendUnique("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.Votestr(), "-j", mangleChain)
-						if err != nil {
-							log.Println("couldn't add mangle rule for TPUvote", err)
-						}
-
-						// Filter rules
-						err = ipt.AppendUnique("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.TPUstr(), "-j", filterChain)
-						if err != nil {
-							log.Println("couldn't add filter rule for TPU: ", err)
-						}
-
-						err = ipt.AppendUnique("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.Fwdstr(), "-j", filterChain+"-fwd")
-						if err != nil {
-							log.Println("couldn't add filter rule for FWD: ", err)
-						}
-
-						err = ipt.AppendUnique("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.Votestr(), "-j", filterChain+"-vote")
-						if err != nil {
-							log.Println("couldn't add filter rule for Vote: ", err)
-						}
+						insertMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
+						insertMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
+						insertMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
 					}
 					// We don't add our own node to any classes
 					continue
