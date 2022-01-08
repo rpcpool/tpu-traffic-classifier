@@ -41,9 +41,11 @@ You can use the fwmarks set by this tool to create traffic classes for QoS/traff
 
 ## Firewalling
 
-**If you do not provide a validator pubkey, then all UDP traffic will pass through this port**.
+**If you do not provide a validator pubkey, then all UDP traffic will pass through these firewall rules**.
 
-You can add rules to `solana-tpu-custom`. For instance if you wanted to temporarily close TPU port you can run:
+You can add rules to `solana-tpu-custom`. This chain will persist between invocations of this tool (it's not cleaned out). If you provide your validator pubkey, then the tool will look up your TPU port and send all incoming UDP TPU traffic to this port to the `solana-tpu-custom` chain.
+
+For instance if you wanted to temporarily close TPU ports you can run:
 
 ```
 iptables -I solana-tpu-custom -j DROP
@@ -68,6 +70,7 @@ iptables -I solana-tpu-custom -m set --match-set solana-unstaked -j ACCEPT
 iptables -I solana-tpu-custom -j DROP
 ```
 
+These rules will only work when this utility is running. When it is not running, the TPU port will be open as usual.
 
 ## Example iptables generated chains
 
