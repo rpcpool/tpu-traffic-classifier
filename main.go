@@ -5,15 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"sort"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/nadoo/ipset"
@@ -30,14 +31,12 @@ type PeerNode struct {
 }
 
 var (
-	flagConfigFile           = flag.String("config-file", "config.yml", "configuration file")
-	flagPubkey               = flag.String("pubkey", "", "validator-pubkey")
-	flagRpcUri               = flag.String("rpc-uri", "https://api.mainnet-beta.solana.com", "the rpc uri to use")
-	myGossipPort      string = ""
-	myTPUPort         string = ""
-	mangleChain              = "solana-nodes"
-	filterChain              = "solana-tpu"
-	filterChainCustom        = "solana-tpu-custom"
+	flagConfigFile    = flag.String("config-file", "config.yml", "configuration file")
+	flagPubkey        = flag.String("pubkey", "", "validator-pubkey")
+	flagRpcUri        = flag.String("rpc-uri", "https://api.mainnet-beta.solana.com", "the rpc uri to use")
+	mangleChain       = "solana-nodes"
+	filterChain       = "solana-tpu"
+	filterChainCustom = "solana-tpu-custom"
 )
 
 type TrafficClass struct {
@@ -51,8 +50,70 @@ type Config struct {
 	UnstakedClass TrafficClass   `yaml:"unstaked_class"`
 }
 
+func createChain(ipt *iptables.IPTables, table string, filterChain string) {
+	exists, err := ipt.ChainExists(table, filterChain)
+	if err != nil {
+		log.Println("couldn't check existance", filterChain, err)
+		os.Exit(1)
+	}
+	if !exists {
+		ipt.NewChain(table, filterChain)
+		if err != nil {
+			log.Println("couldn't create filter chain", filterChain, err)
+			os.Exit(1)
+		}
+	}
+}
+
+func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorPorts *ValidatorPorts) {
+	<-c
+
+	log.Println("Cleaning up and deleting all sets and firewall rules")
+
+	// Clean up
+	for _, set := range cfg.Classes {
+		ipset.Flush(set.Name)
+		ipset.Destroy(set.Name)
+		//ipt.Delete("mangle", mangleChain, "-m", "set", "--match-set", set.Name, "src", "-j", "MARK", "--set-mark", "4")
+	}
+
+	// We didn't find the TPU port so we never added those rules
+	if validatorPorts != nil {
+		ipt.Delete("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.TPUstr(), "-j", mangleChain)
+		ipt.Delete("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.TPUstr(), "-j", filterChain)
+		ipt.Delete("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.Fwdstr(), "-j", mangleChain)
+		ipt.Delete("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.Fwdstr(), "-j", filterChain+"-fwd")
+		ipt.Delete("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.Votestr(), "-j", mangleChain)
+		ipt.Delete("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.Votestr(), "-j", filterChain+"-vote")
+	}
+
+	// Just in case, clean these rules up
+	ipt.Delete("mangle", "PREROUTING", "-p", "udp", "-j", mangleChain)
+	ipt.Delete("filter", "INPUT", "-p", "udp", "-j", filterChain)
+	ipt.Delete("filter", "INPUT", "-p", "udp", "-j", filterChain+"-fwd")
+	ipt.Delete("filter", "INPUT", "-p", "udp", "-j", filterChain+"-vote")
+
+	// Clear and delete these chains
+	ipt.ClearAndDeleteChain("mangle", mangleChain)
+	ipt.ClearAndDeleteChain("filter", filterChain)
+	ipt.ClearAndDeleteChain("filter", filterChain+"-fwd")
+	ipt.ClearAndDeleteChain("filter", filterChain+"-vote")
+
+	// Only delete the custom chain if it is empty
+	ipt.DeleteChain("filter", filterChainCustom)
+	ipt.DeleteChain("filter", filterChainCustom+"-fwd")
+	ipt.DeleteChain("filter", filterChainCustom+"-vote")
+
+	log.Println("Finished cleaning up")
+
+	os.Exit(1)
+}
+
 func main() {
 	flag.Parse()
+
+	// Set validator ports to nil to start with
+	var validatorPorts *ValidatorPorts = nil
 
 	// Load traffic classes
 	f, err := os.Open(*flagConfigFile)
@@ -61,6 +122,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Load config file
 	var cfg Config
 	decoder := yaml.NewDecoder(f)
 	err = decoder.Decode(&cfg)
@@ -99,45 +161,20 @@ func main() {
 		ipset.Flush(set.Name)
 	}
 
+	// Clean up on signals
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	go cleanUp(c, &cfg, ipt, validatorPorts)
+
 	// Add base rules for marking packets in iptables
-	exists, err := ipt.ChainExists("mangle", mangleChain)
-	if err != nil {
-		log.Println("couldn't check existance", mangleChain, err)
-		os.Exit(1)
-	}
-	if !exists {
-		err = ipt.NewChain("mangle", mangleChain)
-		if err != nil {
-			log.Println("couldn't create mangle chain", mangleChain, err)
-			os.Exit(1)
-		}
-	}
+	createChain(ipt, "mangle", mangleChain)
+	createChain(ipt, "filter", filterChain)
+	createChain(ipt, "filter", filterChain+"-fwd")
+	createChain(ipt, "filter", filterChain+"-vote")
+	createChain(ipt, "filter", filterChainCustom)
+	createChain(ipt, "filter", filterChainCustom+"-fwd")
+	createChain(ipt, "filter", filterChainCustom+"-vote")
 
-	exists, err = ipt.ChainExists("filter", filterChain)
-	if err != nil {
-		log.Println("couldn't check existance", filterChain, err)
-		os.Exit(1)
-	}
-	if !exists {
-		ipt.NewChain("filter", filterChain)
-		if err != nil {
-			log.Println("couldn't create filter chain", filterChain, err)
-			os.Exit(1)
-		}
-	}
-
-	exists, err = ipt.ChainExists("filter", filterChainCustom)
-	if err != nil {
-		log.Println("couldn't check existance", filterChainCustom, err)
-		os.Exit(1)
-	}
-	if !exists {
-		ipt.NewChain("filter", filterChainCustom)
-		if err != nil {
-			log.Println("couldn't create filter chain", filterChainCustom, err)
-			os.Exit(1)
-		}
-	}
 	// Create mangle rules for all the classes
 	for _, set := range cfg.Classes {
 		err = ipt.AppendUnique("mangle", mangleChain, "-m", "set", "--match-set", set.Name, "src", "-j", "MARK", "--set-mark", strconv.FormatUint(set.FwMark, 10))
@@ -152,49 +189,26 @@ func main() {
 		if err != nil {
 			log.Println("could not add prerouting mangle chain: ", err)
 		}
+		/*@TODO: what to do in this default scenario? Perhaps create rules only from nodes in gossip?
 		err = ipt.AppendUnique("filter", "INPUT", "-p", "udp", "-j", filterChain)
 		if err != nil {
 			log.Println("could not add input filter chain: ", err)
-		}
-
+		}*/
 	}
+
+	// Add the forwarding rules from the main filter chain to the custom rules one
 	err = ipt.Insert("filter", filterChain, 1, "-j", filterChainCustom)
 	if err != nil {
 		log.Println("could not add custom rules chain: ", err)
 	}
-
-	// Clean up on signals
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
-
-	go func() {
-		<-c
-		// Clean up
-		for _, set := range cfg.Classes {
-			ipset.Flush(set.Name)
-			ipset.Destroy(set.Name)
-			//ipt.Delete("mangle", mangleChain, "-m", "set", "--match-set", set.Name, "src", "-j", "MARK", "--set-mark", "4")
-		}
-
-		// We didn't find the TPU port so we never added those rules
-		if myTPUPort != "" {
-			ipt.Delete("mangle", "PREROUTING", "-p", "udp", "--dport", myTPUPort, "-j", mangleChain)
-			ipt.Delete("filter", "INPUT", "-p", "udp", "--dport", myTPUPort, "-j", filterChain)
-		}
-
-		// Just in case, clean these rules up
-		ipt.Delete("mangle", "PREROUTING", "-p", "udp", "-j", mangleChain)
-		ipt.Delete("filter", "INPUT", "-p", "udp", "-j", filterChain)
-
-		// Clear and delete these chains
-		ipt.ClearAndDeleteChain("mangle", mangleChain)
-		ipt.ClearAndDeleteChain("filter", filterChain)
-
-		// Only delete the custom chain if it is empty
-		ipt.DeleteChain("filter", filterChainCustom)
-
-		os.Exit(1)
-	}()
+	err = ipt.Insert("filter", filterChain+"-fwd", 1, "-j", filterChainCustom+"-fwd")
+	if err != nil {
+		log.Println("could not add custom rules chain: ", err)
+	}
+	err = ipt.Insert("filter", filterChain+"-vote", 1, "-j", filterChainCustom+"-vote")
+	if err != nil {
+		log.Println("could not add custom rules chain: ", err)
+	}
 
 	for {
 		log.Println("Updating ipsets")
@@ -205,7 +219,9 @@ func main() {
 		)
 
 		if err != nil {
-			panic(err)
+			log.Println("coudln't load vote accoutns nodes", err)
+			time.Sleep(time.Second * 5)
+			continue
 		}
 
 		// Current nodes
@@ -221,7 +237,7 @@ func main() {
 					continue
 				}
 			}
-			if node.ActivatedStake < 0 {
+			if node.ActivatedStake <= 0 {
 				continue
 			}
 
@@ -241,7 +257,7 @@ func main() {
 					continue
 				}
 			}
-			if node.ActivatedStake < 0 {
+			if node.ActivatedStake <= 0 {
 				continue
 			}
 
@@ -257,7 +273,9 @@ func main() {
 		)
 
 		if err != nil {
-			panic(err)
+			log.Println("coudln't load cluster nodes", err)
+			time.Sleep(time.Second * 5)
+			continue
 		}
 
 		for _, node := range nodes {
@@ -265,15 +283,50 @@ func main() {
 				if *flagPubkey == node.Pubkey.String() {
 					// If this is our node, configure the TPU forwarding rules
 					if node.TPU != nil {
-						tpu := strings.Split(*(node.TPU), ":")
-						myTPUPort = tpu[1]
-						ipt.AppendUnique("mangle", "PREROUTING", "-p", "udp", "--dport", myTPUPort, "-j", mangleChain)
+						tpuAddr := *node.TPU
+						_, tpu_port, err := net.SplitHostPort(tpuAddr)
+						if err != nil {
+							log.Println("error parsing your validator ports", err)
+							continue
+						}
+						port, err := strconv.Atoi(tpu_port)
+						if err != nil {
+							log.Println("couldn't load validator ports for your pubkey", err)
+							continue
+						}
+
+						validatorPorts = NewValidatorPorts(uint16(port))
+
+						// Mangle rules
+						err = ipt.AppendUnique("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.TPUstr(), "-j", mangleChain)
 						if err != nil {
 							log.Println("couldn't add mangle rule for TPU", err)
 						}
-						err = ipt.AppendUnique("filter", "INPUT", "-p", "udp", "--dport", myTPUPort, "-j", filterChain)
+
+						err = ipt.AppendUnique("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.Fwdstr(), "-j", mangleChain)
+						if err != nil {
+							log.Println("couldn't add mangle rule for TPUfwd", err)
+						}
+
+						err = ipt.AppendUnique("mangle", "PREROUTING", "-p", "udp", "--dport", validatorPorts.Votestr(), "-j", mangleChain)
+						if err != nil {
+							log.Println("couldn't add mangle rule for TPUvote", err)
+						}
+
+						// Filter rules
+						err = ipt.AppendUnique("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.TPUstr(), "-j", filterChain)
 						if err != nil {
 							log.Println("couldn't add filter rule for TPU: ", err)
+						}
+
+						err = ipt.AppendUnique("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.Fwdstr(), "-j", filterChain+"-fwd")
+						if err != nil {
+							log.Println("couldn't add filter rule for FWD: ", err)
+						}
+
+						err = ipt.AppendUnique("filter", "INPUT", "-p", "udp", "--dport", validatorPorts.Votestr(), "-j", filterChain+"-vote")
+						if err != nil {
+							log.Println("couldn't add filter rule for Vote: ", err)
 						}
 					}
 					// We don't add our own node to any classes
@@ -286,22 +339,25 @@ func main() {
 				// Currently add both TPU and Gossip addresses if both are listed
 				// not sure if TPU would ever be different from gossip (assumption: not)
 				var addresses []string
-				var gossip, tpu []string
-				gossip = strings.Split(*(node.Gossip), ":")
+				gossip_host, _, err := net.SplitHostPort(*(node.Gossip))
+				if err != nil {
+					spew.Dump(node.Gossip)
+					log.Println("couldn't parse gossip host", *(node.Gossip), err)
+					continue
+				}
+				addresses = append(addresses, gossip_host)
 
 				if node.TPU != nil {
-					tpu = strings.Split(*(node.TPU), ":")
-				}
-				if len(gossip) > 0 {
-					addresses = append(addresses, gossip[0])
-				}
-				if len(tpu) > 0 {
-					if len(gossip) > 0 {
-						if tpu[0] != gossip[0] {
-							addresses = append(addresses, tpu[0])
+					tpu := *(node.TPU)
+					if tpu != "" {
+						tpu_host, _, err := net.SplitHostPort(tpu)
+						if err == nil {
+							if tpu_host != gossip_host {
+								addresses = append(addresses, tpu_host)
+							}
+						} else {
+							log.Println("couldn't parse tpu host", err)
 						}
-					} else {
-						addresses = append(addresses, tpu[0])
 					}
 				}
 
