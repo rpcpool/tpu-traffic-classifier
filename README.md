@@ -4,9 +4,9 @@ This small program creates ipsets and iptables rules for nodes in the Solana net
 
 By default, it creates and maintains the following ipsets:
 
- - `solana_unstaked`: unstaked nodes visible in gossip
- - `solana_staked`: staked nodes visible in gossip
- - `solana_high_staked`: nodes visible in gossip with >1% of stake
+ - `solana-unstaked`: unstaked nodes visible in gossip
+ - `solana-staked`: staked nodes visible in gossip
+ - `solana-high-staked`: nodes visible in gossip with >1% of stake
 
 These sets will be kept up to date for as long as this software runs. On exit it will clean up the sets.
 
@@ -15,7 +15,6 @@ It also uses the PREROUTING tables to permanently mark traffic from these sets o
  - `1`: unstaked
  - `3`: staked
  - `9`: high staked
-
 
 ## Traffic shaping
 
@@ -36,3 +35,13 @@ iptables -I solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
 iptables -I solana-tpu-custom -m set --match-set solana-highstaked -j ACCEPT
 iptables -I solana-tpu-custom -j DROP
 ```
+
+If you would only allow nodes in gossip to send to your TPU:
+
+```
+iptables -I solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
+iptables -I solana-tpu-custom -m set --match-set solana-highstaked -j ACCEPT
+iptables -I solana-tpu-custom -m set --match-set solana-unstaked -j ACCEPT
+iptables -I solana-tpu-custom -j DROP
+```
+

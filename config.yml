@@ -1,13 +1,13 @@
 # Special unstaked class for all nodes visible in gossip but without stake
 unstaked_class:
-  name: solana_unstaked
+  name: solana-unstaked
   fwmark: 1
 
 # Different staked classes, the highest matching class will apply
 staked_classes:
-  - name: solana_staked
+  - name: solana-staked
     stake_percentage: 0
     fwmark: 9
-  - name: solana_high_staked 
+  - name: solana-high-staked 
     stake_percentage: 0.01
     fwmark: 3
