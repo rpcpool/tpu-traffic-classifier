@@ -48,7 +48,7 @@ You can add rules to `solana-tpu-custom`. This chain will persist between invoca
 For instance if you wanted to temporarily close TPU ports you can run:
 
 ```
-iptables -I solana-tpu-custom -j DROP
+iptables -A solana-tpu-custom -j DROP
 ```
 
 This will drop all traffic to the tpu port.
@@ -56,18 +56,18 @@ This will drop all traffic to the tpu port.
 If you would like to drop all traffic to TPU port apart from validators (staked nodes):
 
 ```
-iptables -I solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
-iptables -I solana-tpu-custom -m set --match-set solana-high-staked -j ACCEPT
-iptables -I solana-tpu-custom -j DROP
+iptables -A solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-high-staked -j ACCEPT
+iptables -A solana-tpu-custom -j DROP
 ```
 
 If you would only allow nodes in gossip to send to your TPU:
 
 ```
-iptables -I solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
-iptables -I solana-tpu-custom -m set --match-set solana-high-staked -j ACCEPT
-iptables -I solana-tpu-custom -m set --match-set solana-unstaked -j ACCEPT
-iptables -I solana-tpu-custom -j DROP
+iptables -A solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-high-staked -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-unstaked -j ACCEPT
+iptables -A solana-tpu-custom -j DROP
 ```
 
 These rules will only work when this utility is running. When it is not running, the TPU port will be open as usual.
