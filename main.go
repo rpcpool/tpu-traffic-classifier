@@ -156,10 +156,11 @@ func main() {
 		if err != nil {
 			log.Println("could not add input filter chain: ", err)
 		}
-		err = ipt.Insert("filter", filterChain, 1, "-j", filterChainCustom)
-		if err != nil {
-			log.Println("could not add custom rules chain: ", err)
-		}
+
+	}
+	err = ipt.Insert("filter", filterChain, 1, "-j", filterChainCustom)
+	if err != nil {
+		log.Println("could not add custom rules chain: ", err)
 	}
 
 	// Clean up on signals
