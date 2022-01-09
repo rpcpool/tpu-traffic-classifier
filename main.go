@@ -37,6 +37,7 @@ var (
 	mangleChain       = "solana-nodes"
 	filterChain       = "solana-tpu"
 	filterChainCustom = "solana-tpu-custom"
+  gossipSet         = "solana-gossip"
 )
 
 type TrafficClass struct {
@@ -95,6 +96,8 @@ func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorP
 	log.Println("Cleaning up and deleting all sets and firewall rules")
 
 	// Clean up
+  ipset.Flush(gossipSet)
+  ipset.Destroy(gossipSet)
 	for _, set := range cfg.Classes {
 		ipset.Flush(set.Name)
 		ipset.Destroy(set.Name)
@@ -177,6 +180,8 @@ func main() {
 	}
 
 	// Clear the ipsets
+  ipset.Create(gossipSet)
+  ipset.Flush(gossipSet)
 	for _, set := range cfg.Classes {
 		ipset.Create(set.Name)
 		ipset.Flush(set.Name)
@@ -240,7 +245,7 @@ func main() {
 		)
 
 		if err != nil {
-			log.Println("coudln't load vote accoutns nodes", err)
+			log.Println("coudln't load vote accounts nodes", err)
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -288,17 +293,20 @@ func main() {
 			}
 		}
 
-		// Fetch the IPs for all teh cluster nodes
+		// Fetch the IPs for all the cluster nodes
 		nodes, err := client.GetClusterNodes(
 			context.TODO(),
 		)
 
 		if err != nil {
-			log.Println("coudln't load cluster nodes", err)
+			log.Println("couldn't load cluster nodes", err)
 			time.Sleep(time.Second * 5)
 			continue
 		}
 
+    // @TODO if a node disappears from gossip, it would be good to remove it from the ipset
+    // otherwise the ipsets will just continue to grow, samething for our own tpu host address
+    // if we change IP.
 		for _, node := range nodes {
 			if *flagPubkey != "" {
 				if *flagPubkey == node.Pubkey.String() {
@@ -306,32 +314,29 @@ func main() {
 					if node.TPU != nil {
 						tpuAddr := *node.TPU
 						_, tpu_port, err := net.SplitHostPort(tpuAddr)
-						if err != nil {
+						if err == nil {
+              port, err := strconv.Atoi(tpu_port)
+              if err == nil {
+                if validatorPorts != nil {
+                  if validatorPorts.TPU != uint16(port) {
+                    // TPU has changed, clean up before re-adding
+                    deleteMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
+                    deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
+                    deleteMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
+                  }
+                }
+                validatorPorts = NewValidatorPorts(uint16(port))
+
+                insertMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
+                insertMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
+                insertMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
+              } else {
+                log.Println("couldn't load validator ports for your pubkey", err)
+              }
+						} else {
 							log.Println("error parsing your validator ports", err)
-							continue
-						}
-						port, err := strconv.Atoi(tpu_port)
-						if err != nil {
-							log.Println("couldn't load validator ports for your pubkey", err)
-							continue
-						}
-
-						if validatorPorts != nil {
-							if validatorPorts.TPU != uint16(port) {
-								// TPU has changed, clean up before re-adding
-								deleteMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
-								deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
-								deleteMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
-							}
-						}
-						validatorPorts = NewValidatorPorts(uint16(port))
-
-						insertMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
-						insertMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
-						insertMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
+            }
 					}
-					// We don't add our own node to any classes
-					continue
 				}
 			}
 
@@ -370,6 +375,8 @@ func main() {
 					for _, class := range cfg.Classes {
 						// Add to the highest class it matches
 						for _, addr := range addresses {
+              ipset.Add(gossipSet, addr) // add all addresses to the gossipset
+
 							if percent > class.Stake && !added {
 								// Add to the first class found, then set flag
 								// so we don't add it to any lower staked classes
@@ -385,6 +392,7 @@ func main() {
 					// unstaked node add to the special unstaked class
 					// and delete from all other classes
 					for _, addr := range addresses {
+            ipset.Add(gossipSet, addr) // add all addresses to the gossipset
 						ipset.Add(cfg.UnstakedClass.Name, addr)
 						for _, class := range cfg.Classes {
 							if class.Name != cfg.UnstakedClass.Name {

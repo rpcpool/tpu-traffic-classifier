@@ -1,9 +1,12 @@
 # TPU traffic classifier
 
+**Use at your own risk: While this is tested to work well, it's early stage software used for testing and experiments.**
+
 This small program creates ipsets and iptables rules for nodes in the Solana network. 
 
 By default, it creates and maintains the following ipsets:
 
+ - `solana-gossip`: all ips visible in gossip
  - `solana-unstaked`: unstaked nodes visible in gossip
  - `solana-staked`: staked nodes visible in gossip
  - `solana-high-staked`: nodes visible in gossip with >1% of stake
@@ -70,17 +73,17 @@ This will drop all traffic to the tpu port.
 If you would like to drop all traffic to TPU port apart from validators (staked nodes):
 
 ```
-iptables -A solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
-iptables -A solana-tpu-custom -m set --match-set solana-high-staked -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-staked,src -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-high-staked,src -j ACCEPT
 iptables -A solana-tpu-custom -j DROP
 ```
 
 If you would only allow nodes in gossip to send to your TPU:
 
 ```
-iptables -A solana-tpu-custom -m set --match-set solana-staked -j ACCEPT
-iptables -A solana-tpu-custom -m set --match-set solana-high-staked -j ACCEPT
-iptables -A solana-tpu-custom -m set --match-set solana-unstaked -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-staked,src -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-high-staked,src -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-unstaked,src -j ACCEPT
 iptables -A solana-tpu-custom -j DROP
 ```
 
