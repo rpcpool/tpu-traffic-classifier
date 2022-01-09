@@ -73,18 +73,22 @@ This will drop all traffic to the tpu port.
 If you would like to drop all traffic to TPU port apart from validators (staked nodes):
 
 ```
-iptables -A solana-tpu-custom -m set --match-set solana-staked,src -j ACCEPT
-iptables -A solana-tpu-custom -m set --match-set solana-high-staked,src -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-staked src -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-high-staked src -j ACCEPT
 iptables -A solana-tpu-custom -j DROP
 ```
 
 If you would only allow nodes in gossip to send to your TPU:
 
 ```
-iptables -A solana-tpu-custom -m set --match-set solana-staked,src -j ACCEPT
-iptables -A solana-tpu-custom -m set --match-set solana-high-staked,src -j ACCEPT
-iptables -A solana-tpu-custom -m set --match-set solana-unstaked,src -j ACCEPT
+iptables -A solana-tpu-custom -m set --match-set solana-gossip src -j ACCEPT
 iptables -A solana-tpu-custom -j DROP
+```
+
+Log all traffic from nodes not in gossip to you TPU fwd:
+
+```
+iptables -A solana-tpu-custom-fwd -m set ! --match-set solana-gossip src -j LOG --log-prefix 'TPUfwd:not in gossip:' --log-level info
 ```
 
 These rules will only work when this utility is running. When it is not running, the TPU port will be open as usual.
