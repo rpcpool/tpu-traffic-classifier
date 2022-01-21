@@ -21,7 +21,7 @@ It also uses the PREROUTING tables to permanently mark traffic from these sets o
  - `3`: staked
  - `9`: high staked
 
-If you provide you validator pubkey it will assume that your validator runs on localhost and it will lookup the TPU port of the validator and enable the firwalling rules. If you do not provide your validator pubkey, all UDP traffic passing through this host will be passed through the chains created by this tool.
+If you provide you validator pubkey it will assume that your validator runs on localhost and it will lookup the TPU port of the validator and enable the firewalling rules. If you do not provide your validator pubkey, all UDP traffic passing through this host will be passed through the chains created by this tool.
 
 ##  Running
 
