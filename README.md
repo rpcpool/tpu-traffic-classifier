@@ -58,8 +58,10 @@ RPC nodes shouldn't expose TPU and TPUfwd (as they don't process TPU traffic int
 You can use this tool to enforce this kind of firewall:
 
 ```
-./tpu-traffic-classifier -config-file config.yml -our-localhost -tpu-policy DROP -fwd-policy DROP
+./tpu-traffic-classifier -config-file config.yml -our-localhost -tpu-policy DROP -fwd-policy DROP -update=false
 ```
+
+This mode will not keep the ipsets updated and will only create firewall rules for your RPC node to not accept traffic via TPU and TPUfwd.
 
 ## Sample config
 
