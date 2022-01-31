@@ -21,7 +21,7 @@ It also uses the PREROUTING tables to permanently mark traffic from these sets o
  - `3`: staked
  - `9`: high staked
 
-If you provide you validator pubkey it will assume that your validator runs on localhost and it will lookup the TPU port of the validator and enable the firwalling rules. If you do not provide your validator pubkey, all UDP traffic passing through this host will be passed through the chains created by this tool.
+If you provide you validator pubkey it will assume that your validator runs on localhost and it will lookup the TPU port of the validator and enable the firewalling rules. If you do not provide your validator pubkey, all UDP traffic passing through this host will be passed through the chains created by this tool.
 
 ##  Running
 
@@ -51,20 +51,22 @@ Usage of ./tpu-traffic-classifier:
         the default iptables policy for votes, default is passthrough
 ```
 
-## Traffic shaping
-
-**Incomplete example, not usable as-is**
-
-You can use the fwmarks set by this tool to create traffic classes for QoS/traffic shaping.
-
+## Sample config
 
 ```
-tc qdisc add dev eth0 handle 1: ingress
+# Special unstaked class for all nodes visible in gossip but without stake
+unstaked_class:
+  name: solana-unstaked
+  fwmark: 1
 
-tc filter add dev eth0 protocol ip parent 1: prio 1 handle 1 fw flowid 1:10 police rate 100mbit burst 100k # unstaked
-tc filter add dev eth0 protocol ip parent 1: prio 1 handle 3 fw flowid 1:20 # staked
-tc filter add dev eth0 protocol ip parent 1: prio 1 handle 9 fw flowid 1:30 # high staked
-tc filter add dev eth0 protocol ip parent 1: prio 1 handle 6 fw flowid 1:40 # others
+# Different staked classes, the highest matching class will apply
+staked_classes:
+  - name: solana-staked
+    stake_percentage: 0
+    fwmark: 3
+  - name: solana-high-staked 
+    stake_percentage: 0.0003 # 100k stake - 0.03%
+    fwmark: 9
 ```
 
 ## Firewalling
@@ -103,6 +105,54 @@ iptables -A solana-tpu-custom-fwd -m set ! --match-set solana-gossip src -j LOG 
 ```
 
 These rules will only work when this utility is running. When it is not running, the TPU port will be open as usual.
+
+
+## Rate limiting example
+
+You can rate limit traffic to reduce the load on your TPU port:
+
+```
+#!/bin/bash
+
+iptables -F solana-tpu-custom
+# accept any amount of traffic from nodes with more than 100k stake:
+iptables -A solana-tpu-custom -m set --match-set solana-high-staked src -j ACCEPT  
+# accept 50/udp/second from low staked nodes
+iptables -A solana-tpu-custom -m set --match-set solana-staked src -m limit --limit 50/sec -j ACCEPT                
+# accept 1000 packets/second from RPC nodes (and other unstaked)
+iptables -A solana-tpu-custom -m set --match-set solana-unstaked src -m limit --limit 1000/sec  -j ACCEPT # rpc nodes   
+# accept 10 packets/second from nodes not visible in gossip
+iptables -A solana-tpu-custom -m set ! --match-set solana-gossip src -m limit --limit 10/sec -j ACCEPT       
+# log all dropped traffic (warning: lots of logs)
+iptables -A solana-tpu-custom -j LOG --log-prefix "TPUport:" --log-level info
+# drop everything that doesn't pass the limit
+iptables -A solana-tpu-custom -j DROP
+
+iptables -F solana-tpu-custom-fwd
+# accept only forwarding traffic from nodes in gossip:
+iptables -A solana-tpu-custom-fwd -m set --match-set solana-gossip src -j ACCEPT                                                                             
+iptables -A solana-tpu-custom-fwd -j LOG --log-prefix "TPUfwd:" --log-level info                                                                             
+iptables -A solana-tpu-custom-fwd -j DROP
+```
+
+
+
+## Traffic shaping
+
+**Incomplete example, not usable as-is**
+
+You can use the fwmarks set by this tool to create traffic classes for QoS/traffic shaping. You need to use IFB for incoming traffic filteringtraffic . 
+
+
+```
+tc qdisc add dev eth0 handle 1: ingress
+
+tc filter add dev eth0 protocol ip parent 1: prio 1 handle 1 fw flowid 1:10 police rate 100mbit burst 100k # unstaked
+tc filter add dev eth0 protocol ip parent 1: prio 1 handle 3 fw flowid 1:20 # staked
+tc filter add dev eth0 protocol ip parent 1: prio 1 handle 9 fw flowid 1:30 # high staked
+tc filter add dev eth0 protocol ip parent 1: prio 1 handle 6 fw flowid 1:40 # others
+```
+
 
 ## Example iptables generated
 
