@@ -30,14 +30,25 @@ Run: `go run .`
 Build: `go build -o tpu-traffic-classifier .`
 
 ```
-$ ./tpu-traffic-classifier --help
 Usage of ./tpu-traffic-classifier:
   -config-file string
         configuration file (default "config.yml")
+  -fetch-identity
+        fetch identity from rpc
+  -fwd-policy string
+        the default iptables policy for tpu forward, default is passthrough
+  -our-localhost
+        use localhost:8899 for rpc and fetch identity from that rpc
   -pubkey string
         validator-pubkey
   -rpc-uri string
         the rpc uri to use (default "https://api.mainnet-beta.solana.com")
+  -tpu-policy string
+        the default iptables policy for tpu, default is passthrough
+  -update
+        whether or not to keep ipsets updated (default true)
+  -vote-policy string
+        the default iptables policy for votes, default is passthrough
 ```
 
 ## Traffic shaping

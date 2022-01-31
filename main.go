@@ -31,13 +31,22 @@ type PeerNode struct {
 }
 
 var (
-	flagConfigFile    = flag.String("config-file", "config.yml", "configuration file")
-	flagPubkey        = flag.String("pubkey", "", "validator-pubkey")
-	flagRpcUri        = flag.String("rpc-uri", "https://api.mainnet-beta.solana.com", "the rpc uri to use")
+	flagConfigFile        = flag.String("config-file", "config.yml", "configuration file")
+	flagPubkey            = flag.String("pubkey", "", "validator-pubkey")
+	flagRpcUri            = flag.String("rpc-uri", "https://api.mainnet-beta.solana.com", "the rpc uri to use")
+	flagRpcIdentity       = flag.Bool("fetch-identity", false, "fetch identity from rpc")
+	flagOurLocalhost      = flag.Bool("our-localhost", false, "use localhost:8899 for rpc and fetch identity from that rpc")
+	flagDefaultTPUPolicy  = flag.String("tpu-policy", "", "the default iptables policy for tpu, default is passthrough")
+	flagDefaultFWDPolicy  = flag.String("fwd-policy", "", "the default iptables policy for tpu forward, default is passthrough")
+	flagDefaultVotePolicy = flag.String("vote-policy", "", "the default iptables policy for votes, default is passthrough")
+	flagUpdateIpSets      = flag.Bool("update", true, "whether or not to keep ipsets updated")
+
 	mangleChain       = "solana-nodes"
 	filterChain       = "solana-tpu"
 	filterChainCustom = "solana-tpu-custom"
-  gossipSet         = "solana-gossip"
+	gossipSet         = "solana-gossip"
+
+	quit = make(chan os.Signal)
 )
 
 type TrafficClass struct {
@@ -51,17 +60,24 @@ type Config struct {
 	UnstakedClass TrafficClass   `yaml:"unstaked_class"`
 }
 
-func createChain(ipt *iptables.IPTables, table string, filterChain string) {
+func createChain(ipt *iptables.IPTables, table string, filterChain string, policy string) {
 	exists, err := ipt.ChainExists(table, filterChain)
 	if err != nil {
 		log.Println("couldn't check existance", filterChain, err)
 		os.Exit(1)
 	}
 	if !exists {
-		ipt.NewChain(table, filterChain)
+		err = ipt.NewChain(table, filterChain)
 		if err != nil {
 			log.Println("couldn't create filter chain", filterChain, err)
 			os.Exit(1)
+		}
+	}
+	if policy != "" {
+		// Append the policy to the filter chain if it is specified
+		err = ipt.AppendUnique(table, filterChain, "-j", policy)
+		if err != nil {
+			log.Println("couldn't set policy", policy, " on ", filterChain, err)
 		}
 	}
 }
@@ -96,8 +112,9 @@ func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorP
 	log.Println("Cleaning up and deleting all sets and firewall rules")
 
 	// Clean up
-  ipset.Flush(gossipSet)
-  ipset.Destroy(gossipSet)
+	ipset.Flush(gossipSet)
+	ipset.Destroy(gossipSet)
+
 	for _, set := range cfg.Classes {
 		ipset.Flush(set.Name)
 		ipset.Destroy(set.Name)
@@ -146,6 +163,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *flagOurLocalhost {
+		*flagRpcUri = "http://localhost:8899/"
+		*flagRpcIdentity = true
+	}
+
 	// Load config file
 	var cfg Config
 	decoder := yaml.NewDecoder(f)
@@ -167,7 +189,18 @@ func main() {
 	// Connect to rpc
 	client := rpc.New(*flagRpcUri)
 
-	// Create iptables nd ipset
+	// Fetch identity
+	if *flagRpcIdentity {
+		out, err := client.GetIdentity(context.TODO())
+		if err == nil {
+			*flagPubkey = out.Identity.String()
+			log.Println("loaded identity=", *flagPubkey)
+		} else {
+			log.Println("couldn't fetch validator identity, firewall will not by default handle tpu/tpufwd/vote ports", err)
+		}
+	}
+
+	// Create iptables and ipset
 	ipt, err := iptables.New()
 	if err != nil {
 		log.Println("couldn't init iptables", err)
@@ -180,26 +213,28 @@ func main() {
 	}
 
 	// Clear the ipsets
-  ipset.Create(gossipSet)
-  ipset.Flush(gossipSet)
+	ipset.Create(gossipSet)
+	ipset.Flush(gossipSet)
 	for _, set := range cfg.Classes {
 		ipset.Create(set.Name)
 		ipset.Flush(set.Name)
 	}
 
 	// Clean up on signals
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	go cleanUp(c, &cfg, ipt, validatorPorts)
 
 	// Add base rules for marking packets in iptables
-	createChain(ipt, "mangle", mangleChain)
-	createChain(ipt, "filter", filterChain)
-	createChain(ipt, "filter", filterChain+"-fwd")
-	createChain(ipt, "filter", filterChain+"-vote")
-	createChain(ipt, "filter", filterChainCustom)
-	createChain(ipt, "filter", filterChainCustom+"-fwd")
-	createChain(ipt, "filter", filterChainCustom+"-vote")
+	createChain(ipt, "mangle", mangleChain, "ACCEPT")
+	createChain(ipt, "filter", filterChain, *flagDefaultTPUPolicy)
+	createChain(ipt, "filter", filterChain+"-fwd", *flagDefaultFWDPolicy)
+	createChain(ipt, "filter", filterChain+"-vote", *flagDefaultVotePolicy)
+
+	// No need to use default policies on the custom chains as they'll fall through to the other chains
+	createChain(ipt, "filter", filterChainCustom, "")
+	createChain(ipt, "filter", filterChainCustom+"-fwd", "")
+	createChain(ipt, "filter", filterChainCustom+"-vote", "")
 
 	// Create mangle rules for all the classes
 	for _, set := range cfg.Classes {
@@ -245,7 +280,7 @@ func main() {
 		)
 
 		if err != nil {
-			log.Println("coudln't load vote accounts nodes", err)
+			log.Println("couldn't load vote accounts nodes", err)
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -258,7 +293,7 @@ func main() {
 			totalStake += node.ActivatedStake
 
 			// Don't add my self and don't add unstaked nodes
-			if *flagPubkey != "" {
+			if *flagPubkey != "" || flagPubkey != nil {
 				if node.NodePubkey.String() == *flagPubkey {
 					continue
 				}
@@ -278,7 +313,7 @@ func main() {
 			totalStake += node.ActivatedStake
 
 			// Don't add my self and don't add unstaked nodes
-			if *flagPubkey != "" {
+			if *flagPubkey != "" || flagPubkey != nil {
 				if node.NodePubkey.String() == *flagPubkey {
 					continue
 				}
@@ -304,9 +339,9 @@ func main() {
 			continue
 		}
 
-    // @TODO if a node disappears from gossip, it would be good to remove it from the ipset
-    // otherwise the ipsets will just continue to grow, samething for our own tpu host address
-    // if we change IP.
+		// @TODO if a node disappears from gossip, it would be good to remove it from the ipset
+		// otherwise the ipsets will just continue to grow, samething for our own tpu host address
+		// if we change IP.
 		for _, node := range nodes {
 			if *flagPubkey != "" {
 				if *flagPubkey == node.Pubkey.String() {
@@ -315,27 +350,36 @@ func main() {
 						tpuAddr := *node.TPU
 						_, tpu_port, err := net.SplitHostPort(tpuAddr)
 						if err == nil {
-              port, err := strconv.Atoi(tpu_port)
-              if err == nil {
-                if validatorPorts != nil {
-                  if validatorPorts.TPU != uint16(port) {
-                    // TPU has changed, clean up before re-adding
-                    deleteMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
-                    deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
-                    deleteMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
-                  }
-                }
-                validatorPorts = NewValidatorPorts(uint16(port))
+							port, err := strconv.Atoi(tpu_port)
+							if err == nil {
+								if validatorPorts != nil {
+									if validatorPorts.TPU != uint16(port) {
+										// TPU has changed, clean up before re-adding
+										deleteMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
+										deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
+										deleteMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
+									}
+								}
+								validatorPorts = NewValidatorPorts(uint16(port))
 
-                insertMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
-                insertMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
-                insertMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
-              } else {
-                log.Println("couldn't load validator ports for your pubkey", err)
-              }
+								insertMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
+								insertMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
+								insertMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
+
+								log.Println("validator ports set, identity=", *flagPubkey, " tpu=", validatorPorts.TPUstr(), "tpufwd=", validatorPorts.Fwdstr(), "vote=", validatorPorts.Votestr())
+
+								if !(*flagUpdateIpSets) {
+									log.Println("not updating ipsets, sleeping for 10 seconds")
+									// update every 10 secs
+									time.Sleep(10 * time.Second)
+									continue
+								}
+							} else {
+								log.Println("couldn't load validator ports for your pubkey", err)
+							}
 						} else {
 							log.Println("error parsing your validator ports", err)
-            }
+						}
 					}
 				}
 			}
@@ -375,7 +419,7 @@ func main() {
 					for _, class := range cfg.Classes {
 						// Add to the highest class it matches
 						for _, addr := range addresses {
-              ipset.Add(gossipSet, addr) // add all addresses to the gossipset
+							ipset.Add(gossipSet, addr) // add all addresses to the gossipset
 
 							if percent > class.Stake && !added {
 								// Add to the first class found, then set flag
@@ -392,7 +436,7 @@ func main() {
 					// unstaked node add to the special unstaked class
 					// and delete from all other classes
 					for _, addr := range addresses {
-            ipset.Add(gossipSet, addr) // add all addresses to the gossipset
+						ipset.Add(gossipSet, addr) // add all addresses to the gossipset
 						ipset.Add(cfg.UnstakedClass.Name, addr)
 						for _, class := range cfg.Classes {
 							if class.Name != cfg.UnstakedClass.Name {
