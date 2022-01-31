@@ -150,6 +150,21 @@ func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorP
 	os.Exit(1)
 }
 
+func reloadConfig(c <-chan os.Signal, cfg *Config) {
+	<-c
+
+	log.Println("Reloading configuration files")
+
+	// @TODO reload configuration file
+}
+
+func setUpdate(c <-chan os.Signal) {
+	<-c
+
+	log.Println("Updating ipsets")
+	// @TODO change the ipset
+}
+
 func main() {
 	flag.Parse()
 
@@ -225,6 +240,14 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	go cleanUp(c, &cfg, ipt, validatorPorts)
 
+	cUSR1 := make(chan os.Signal, 1)
+	signal.Notify(cUSR1, syscall.SIGUSR1)
+	go setUpdate(cUSR1)
+
+	cHUP := make(chan os.Signal, 1)
+	signal.Notify(cHUP, syscall.SIGHUP)
+	go reloadConfig(cHUP, &cfg)
+
 	// Add base rules for marking packets in iptables
 	createChain(ipt, "mangle", mangleChain, "ACCEPT")
 	createChain(ipt, "filter", filterChain, *flagDefaultTPUPolicy)
@@ -272,59 +295,64 @@ func main() {
 	}
 
 	for {
-		log.Println("Updating ipsets")
-
-		stakedNodes, err := client.GetVoteAccounts(
-			context.TODO(),
-			&rpc.GetVoteAccountsOpts{},
-		)
-
-		if err != nil {
-			log.Println("couldn't load vote accounts nodes", err)
-			time.Sleep(time.Second * 5)
-			continue
-		}
-
-		// Current nodes
-		stakedPeers := make(map[string]PeerNode)
 		var totalStake uint64 = 0
+		var stakedPeers map[string]PeerNode
 
-		for _, node := range stakedNodes.Current {
-			totalStake += node.ActivatedStake
+		// No need to update ipsets
+		if *flagUpdateIpSets {
+			log.Println("Updating stake weights")
 
-			// Don't add my self and don't add unstaked nodes
-			if *flagPubkey != "" || flagPubkey != nil {
-				if node.NodePubkey.String() == *flagPubkey {
-					continue
-				}
-			}
-			if node.ActivatedStake <= 0 {
+			stakedNodes, err := client.GetVoteAccounts(
+				context.TODO(),
+				&rpc.GetVoteAccountsOpts{},
+			)
+
+			if err != nil {
+				log.Println("couldn't load vote accounts nodes", err)
+				time.Sleep(time.Second * 5)
 				continue
 			}
 
-			stakedPeers[node.NodePubkey.String()] = PeerNode{
-				Stake:  node.ActivatedStake,
-				Pubkey: node.NodePubkey,
-			}
-		}
+			// Current nodes
+			stakedPeers = make(map[string]PeerNode)
 
-		// Delinquent nodes
-		for _, node := range stakedNodes.Delinquent {
-			totalStake += node.ActivatedStake
+			for _, node := range stakedNodes.Current {
+				totalStake += node.ActivatedStake
 
-			// Don't add my self and don't add unstaked nodes
-			if *flagPubkey != "" || flagPubkey != nil {
-				if node.NodePubkey.String() == *flagPubkey {
+				// Don't add my self and don't add unstaked nodes
+				if *flagPubkey != "" || flagPubkey != nil {
+					if node.NodePubkey.String() == *flagPubkey {
+						continue
+					}
+				}
+				if node.ActivatedStake <= 0 {
 					continue
 				}
-			}
-			if node.ActivatedStake <= 0 {
-				continue
+
+				stakedPeers[node.NodePubkey.String()] = PeerNode{
+					Stake:  node.ActivatedStake,
+					Pubkey: node.NodePubkey,
+				}
 			}
 
-			stakedPeers[node.NodePubkey.String()] = PeerNode{
-				Stake:  node.ActivatedStake,
-				Pubkey: node.NodePubkey,
+			// Delinquent nodes
+			for _, node := range stakedNodes.Delinquent {
+				totalStake += node.ActivatedStake
+
+				// Don't add my self and don't add unstaked nodes
+				if *flagPubkey != "" || flagPubkey != nil {
+					if node.NodePubkey.String() == *flagPubkey {
+						continue
+					}
+				}
+				if node.ActivatedStake <= 0 {
+					continue
+				}
+
+				stakedPeers[node.NodePubkey.String()] = PeerNode{
+					Stake:  node.ActivatedStake,
+					Pubkey: node.NodePubkey,
+				}
 			}
 		}
 
@@ -369,10 +397,8 @@ func main() {
 								log.Println("validator ports set, identity=", *flagPubkey, " tpu=", validatorPorts.TPUstr(), "tpufwd=", validatorPorts.Fwdstr(), "vote=", validatorPorts.Votestr())
 
 								if !(*flagUpdateIpSets) {
-									log.Println("not updating ipsets, sleeping for 10 seconds")
-									// update every 10 secs
-									time.Sleep(10 * time.Second)
-									continue
+									// we've found our validator, let's not look at any other nodes
+									break
 								}
 							} else {
 								log.Println("couldn't load validator ports for your pubkey", err)
@@ -449,8 +475,11 @@ func main() {
 				fmt.Println("not visible in gossip", node.Pubkey.String())
 			}
 		}
-
-		log.Println("Updated ipsets: ", len(nodes), " visible in gossip and added to ipset")
+		if *flagUpdateIpSets {
+			log.Println("updated ipsets: ", len(nodes), " visible in gossip and added to ipset")
+		} else {
+			log.Println("not updating ipsets")
+		}
 
 		// update every 10 secs
 		time.Sleep(10 * time.Second)
