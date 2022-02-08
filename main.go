@@ -40,11 +40,13 @@ var (
 	flagDefaultFWDPolicy  = flag.String("fwd-policy", "", "the default iptables policy for tpu forward, default is passthrough")
 	flagDefaultVotePolicy = flag.String("vote-policy", "", "the default iptables policy for votes, default is passthrough")
 	flagUpdateIpSets      = flag.Bool("update", true, "whether or not to keep ipsets updated")
+  flagSleep             = flag.Duration("sleep", 10*time.Second, "how long to sleep between updates")
 
 	mangleChain       = "solana-nodes"
 	filterChain       = "solana-tpu"
 	filterChainCustom = "solana-tpu-custom"
 	gossipSet         = "solana-gossip"
+
 
 	quit = make(chan os.Signal)
 )
@@ -482,6 +484,6 @@ func main() {
 		}
 
 		// update every 10 secs
-		time.Sleep(10 * time.Second)
+		time.Sleep(*flagSleep)
 	}
 }
