@@ -6,10 +6,16 @@ type ValidatorPorts struct {
 	TPU     uint16
 	TPUfwd  uint16
 	TPUvote uint16
+	TPUquic	uint16
 }
 
 func (vp *ValidatorPorts) TPUstr() string {
 	return strconv.FormatUint(uint64(vp.TPU), 10)
+}
+
+
+func (vp *ValidatorPorts) TPUquicstr() string {
+	return strconv.FormatUint(uint64(vp.TPUquic), 10)
 }
 
 func (vp *ValidatorPorts) Fwdstr() string {
@@ -25,5 +31,6 @@ func NewValidatorPorts(tpu uint16) *ValidatorPorts {
 		TPU:     tpu,
 		TPUfwd:  tpu + 1,
 		TPUvote: tpu + 2,
+		TPUquic: tpu + 6,
 	}
 }
