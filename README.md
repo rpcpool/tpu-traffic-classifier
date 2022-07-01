@@ -45,6 +45,8 @@ Usage of ./tpu-traffic-classifier:
         the rpc uri to use (default "https://api.mainnet-beta.solana.com")
   -tpu-policy string
         the default iptables policy for tpu, default is passthrough
+  -tpu-quic-policy
+        the default iptables policy for quic, default is passthrough
   -update
         whether or not to keep ipsets updated (default true)
   -vote-policy string
@@ -58,7 +60,7 @@ RPC nodes shouldn't expose TPU and TPUfwd (as they don't process TPU traffic int
 You can use this tool to enforce this kind of firewall:
 
 ```
-./tpu-traffic-classifier -config-file config.yml -our-localhost -tpu-policy DROP -fwd-policy DROP -update=false
+./tpu-traffic-classifier -config-file config.yml -our-localhost -tpu-policy DROP -fwd-policy DROP -tpu-quic-policy DROP -update=false
 ```
 
 This mode will not keep the ipsets updated and will only create firewall rules for your RPC node to not accept traffic via TPU and TPUfwd.
