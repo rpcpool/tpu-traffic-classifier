@@ -51,6 +51,18 @@ Usage of ./tpu-traffic-classifier:
         the default iptables policy for votes, default is passthrough
 ```
 
+## Recommended RPC node config
+
+RPC nodes shouldn't expose TPU and TPUfwd (as they don't process TPU traffic into blocks) and should only receive traffic via sendTransaction.
+
+You can use this tool to enforce this kind of firewall:
+
+```
+./tpu-traffic-classifier -config-file config.yml -our-localhost -tpu-policy DROP -fwd-policy DROP -update=false
+```
+
+This mode will not keep the ipsets updated and will only create firewall rules for your RPC node to not accept traffic via TPU and TPUfwd.
+
 ## Sample config
 
 ```
