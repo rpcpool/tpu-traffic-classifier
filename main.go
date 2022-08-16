@@ -38,6 +38,7 @@ var (
 	flagOurLocalhost      = flag.Bool("our-localhost", false, "use localhost:8899 for rpc and fetch identity from that rpc")
 	flagDefaultTPUPolicy  = flag.String("tpu-policy", "", "the default iptables policy for tpu, default is passthrough")
 	flagDefaultTPUQuicPolicy  = flag.String("tpu-quic-policy", "", "the default iptables policy for quic tpu, default is passthrough")
+	flagDefaultTPUQuicfwdPolicy  = flag.String("tpu-quic-fwd-policy", "", "the default iptables policy for quic tpu fwd, default is passthrough")
 	flagDefaultFWDPolicy  = flag.String("fwd-policy", "", "the default iptables policy for tpu forward, default is passthrough")
 	flagDefaultVotePolicy = flag.String("vote-policy", "", "the default iptables policy for votes, default is passthrough")
 	flagUpdateIpSets      = flag.Bool("update", true, "whether or not to keep ipsets updated")
@@ -130,6 +131,7 @@ func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorP
 		deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
 		deleteMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
 		deleteMangleInputRules(ipt, validatorPorts.TPUquicstr(), mangleChain, filterChain+"-quic")
+		deleteMangleInputRules(ipt, validatorPorts.TPUquicfwdstr(), mangleChain, filterChain+"-quic-fwd")
 	}
 
 	// Just in case, clean these rules up
@@ -138,6 +140,7 @@ func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorP
 	ipt.Delete("filter", "INPUT", "-p", "udp", "-j", filterChain+"-fwd")
 	ipt.Delete("filter", "INPUT", "-p", "udp", "-j", filterChain+"-vote")
 	ipt.Delete("filter", "INPUT", "-p", "udp", "-j", filterChain+"-quic")
+	ipt.Delete("filter", "INPUT", "-p", "udp", "-j", filterChain+"-quic-fwd")
 
 	// Clear and delete these chains
 	ipt.ClearAndDeleteChain("mangle", mangleChain)
@@ -145,12 +148,14 @@ func cleanUp(c <-chan os.Signal, cfg *Config, ipt *iptables.IPTables, validatorP
 	ipt.ClearAndDeleteChain("filter", filterChain+"-fwd")
 	ipt.ClearAndDeleteChain("filter", filterChain+"-vote")
 	ipt.ClearAndDeleteChain("filter", filterChain+"-quic")
+	ipt.ClearAndDeleteChain("filter", filterChain+"-quic-fwd")
 
 	// Only delete the custom chain if it is empty
 	ipt.DeleteChain("filter", filterChainCustom)
 	ipt.DeleteChain("filter", filterChainCustom+"-fwd")
 	ipt.DeleteChain("filter", filterChainCustom+"-vote")
 	ipt.DeleteChain("filter", filterChainCustom+"-quic")
+	ipt.DeleteChain("filter", filterChainCustom+"-quic-fwd")
 
 	log.Println("Finished cleaning up")
 
@@ -261,12 +266,14 @@ func main() {
 	createChain(ipt, "filter", filterChain+"-fwd", *flagDefaultFWDPolicy)
 	createChain(ipt, "filter", filterChain+"-vote", *flagDefaultVotePolicy)
 	createChain(ipt, "filter", filterChain+"-quic", *flagDefaultTPUQuicPolicy)
+	createChain(ipt, "filter", filterChain+"-quic-fwd", *flagDefaultTPUQuicfwdPolicy)
 
 	// No need to use default policies on the custom chains as they'll fall through to the other chains
 	createChain(ipt, "filter", filterChainCustom, "")
 	createChain(ipt, "filter", filterChainCustom+"-fwd", "")
 	createChain(ipt, "filter", filterChainCustom+"-vote", "")
 	createChain(ipt, "filter", filterChainCustom+"-quic", "")
+	createChain(ipt, "filter", filterChainCustom+"-quic-fwd", "")
 
 	// Create mangle rules for all the classes
 	for _, set := range cfg.Classes {
@@ -396,6 +403,7 @@ func main() {
 										deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
 										deleteMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
 										deleteMangleInputRules(ipt, validatorPorts.TPUquicstr(), mangleChain, filterChain+"-quic")
+										deleteMangleInputRules(ipt, validatorPorts.TPUquicfwdstr(), mangleChain, filterChain+"-quic-fwd")
 									}
 								}
 								validatorPorts = NewValidatorPorts(uint16(port))
@@ -404,8 +412,9 @@ func main() {
 								insertMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
 								insertMangleInputRules(ipt, validatorPorts.Votestr(), mangleChain, filterChain+"-vote")
 								insertMangleInputRules(ipt, validatorPorts.TPUquicstr(), mangleChain, filterChain+"-quic")
+								insertMangleInputRules(ipt, validatorPorts.TPUquicfwdstr(), mangleChain, filterChain+"-quic-fwd")
 
-								log.Println("validator ports set, identity=", *flagPubkey, " tpu=", validatorPorts.TPUstr(), "tpufwd=", validatorPorts.Fwdstr(), "vote=", validatorPorts.Votestr(), "quic=", validatorPorts.TPUquicstr())
+								log.Println("validator ports set, identity=", *flagPubkey, " tpu=", validatorPorts.TPUstr(), "tpufwd=", validatorPorts.Fwdstr(), "vote=", validatorPorts.Votestr(), "quic=", validatorPorts.TPUquicstr(), "quic-fwd=", validatorPorts.TPUquicfwdstr())
 
 								if !(*flagUpdateIpSets) {
 									// we've found our validator, let's not look at any other nodes
