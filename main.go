@@ -310,6 +310,16 @@ func main() {
 		log.Println("could not add custom rules chain: ", err)
 	}
 
+	err = ipt.Insert("filter", filterChain+"-quic", 1, "-j", filterChainCustom+"-quic")
+	if err != nil {
+		log.Println("could not add custom rules chain: ", err)
+	}
+
+	err = ipt.Insert("filter", filterChain+"-quic-fwd", 1, "-j", filterChainCustom+"-quic-fwd")
+	if err != nil {
+		log.Println("could not add custom rules chain: ", err)
+	}
+
 	for {
 		var totalStake uint64 = 0
 		var stakedPeers map[string]PeerNode
