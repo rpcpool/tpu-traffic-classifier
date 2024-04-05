@@ -387,6 +387,7 @@ func main() {
 			context.TODO(),
 		)
 
+
 		if err != nil {
 			log.Println("couldn't load cluster nodes", err)
 			time.Sleep(time.Second * 5)
@@ -399,15 +400,20 @@ func main() {
 		for _, node := range nodes {
 			if *flagPubkey != "" {
 				if *flagPubkey == node.Pubkey.String() {
+          spew.Dump(node)
 					// If this is our node, configure the TPU forwarding rules
 					if node.TPU != nil {
 						tpuAddr := *node.TPU
+            quicTPUAddr := *node.TPUQUIC
 						_, tpu_port, err := net.SplitHostPort(tpuAddr)
-						if err == nil {
+						_, tpu_quic_port, errq := net.SplitHostPort(tpuAddr)
+						if err == nil && errq == nil {
 							port, err := strconv.Atoi(tpu_port)
-							if err == nil {
+							quic_port, errq := strconv.Atoi(tpu_quic_port)
+							if err == nil && errq == nil {
 								if validatorPorts != nil {
-									if validatorPorts.TPU != uint16(port) {
+									if validatorPorts.TPU != uint16(port) ||
+                      validatorPorts.TPUQUIC != uint16(quic_port) {
 										// TPU has changed, clean up before re-adding
 										deleteMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
 										deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
@@ -416,7 +422,7 @@ func main() {
 										deleteMangleInputRules(ipt, validatorPorts.TPUquicfwdstr(), mangleChain, filterChain+"-quic-fwd")
 									}
 								}
-								validatorPorts = NewValidatorPorts(uint16(port))
+								validatorPorts = NewValidatorPorts(uint16(port), uint16(quic_port))
 
 								insertMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
 								insertMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")

@@ -32,12 +32,12 @@ func (vp *ValidatorPorts) Votestr() string {
 	return strconv.FormatUint(uint64(vp.TPUvote), 10)
 }
 
-func NewValidatorPorts(tpu uint16) *ValidatorPorts {
+func NewValidatorPorts(tpu uint16, tpu_quic uint16) *ValidatorPorts {
 	return &ValidatorPorts{
 		TPU:     tpu,
 		TPUfwd:  tpu + 1,
 		TPUvote: tpu + 2,
-		TPUquic: tpu + 6,
-		TPUquicfwd: tpu + 7,
+		TPUquic: tpa_quic,
+		TPUquicfwd: tpu_quic+1,
 	}
 }
