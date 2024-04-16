@@ -8,6 +8,9 @@ staked_classes:
   - name: solana-staked
     stake_percentage: 0
     fwmark: 3
-  - name: solana-high-staked 
+  - name: solana-min-staked
+    stake_percentage: 0.00003
+    fwmark: 5
+  - name: solana-high-staked
     stake_percentage: 0.0003
     fwmark: 9
