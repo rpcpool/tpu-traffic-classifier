@@ -239,3 +239,35 @@ COMMIT
 -A solana-nodes -m set --match-set solana-unstaked src -j MARK --set-xmark 0x1/0xffffffff
 COMMIT
 ```
+
+## Example systemd service file 
+
+The example file creates a service that runs the tpu-traffic-classifier.service
+
+```
+[Unit]
+Description=TPU traffic classifier
+After=network-online.target
+StartLimitInterval=0
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+Group=root
+PermissionsStartOnly=true
+ExecStart=/usr/local/sbin/tpu-traffic-classifier -config-file /etc/tpu-traffic-classifier/config.yml -pubkey <pubkey>
+
+SyslogIdentifier=tpu-traffic-classifier
+KillMode=process
+Restart=always
+RestartSec=5
+
+LimitNOFILE=700000
+LimitNPROC=700000
+
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+```
