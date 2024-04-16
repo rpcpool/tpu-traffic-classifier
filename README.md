@@ -105,7 +105,7 @@ iptables -A solana-tpu-custom -j DROP
 ```
 This will drop all traffic to the tpu port.
 
-If you would like to drop all traffic to UDP TPU port but allow UDP TPU forwards from staked validators:
+If you would like to drop all traffic to UDP TPU port but allow UDP TPU and quic forwards from staked validators and allow all QUIC connections except from nodes in gossip:
 
 ```
 # Old UDP TPU
