@@ -9,7 +9,8 @@ By default, it creates and maintains the following ipsets:
  - `solana-gossip`: all ips visible in gossip
  - `solana-unstaked`: unstaked nodes visible in gossip
  - `solana-staked`: staked nodes visible in gossip
- - `solana-high-staked`: nodes visible in gossip with >1% of stake
+ - `solana-min-staked`: nodes visible in gossip with >0.03% of stake
+ - `solana-high-staked`: nodes visible in gossip with >0.3% of stake
 
 These sets will be kept up to date for as long as this software runs. On exit it will clean up the sets.
 
@@ -19,7 +20,8 @@ It also uses the PREROUTING tables to permanently mark traffic from these sets o
 
  - `1`: unstaked
  - `3`: staked
- - `9`: high staked
+ - `5`: min staked > 15K
+ - `9`: high staked > 150K
 
 If you provide you validator pubkey it will assume that your validator runs on localhost and it will lookup the TPU port of the validator and enable the firewalling rules. If you do not provide your validator pubkey, all UDP traffic passing through this host will be passed through the chains created by this tool.
 
