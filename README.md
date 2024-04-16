@@ -71,7 +71,7 @@ You can use this tool to enforce this kind of firewall:
 
 This mode will not keep the ipsets updated and will only create firewall rules for your RPC node to not accept traffic via TPU and TPUfwd.
 
-## Sample config
+## Sample config.yml
 
 ```
 # Special unstaked class for all nodes visible in gossip but without stake
