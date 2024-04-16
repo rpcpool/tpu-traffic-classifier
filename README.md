@@ -271,3 +271,16 @@ ProtectSystem=full
 [Install]
 WantedBy=multi-user.target
 ```
+
+## Example iptables monitoring
+
+You can create a script to watch the traffic go through all the various "stake classes" rules that you created and gives a nice overview of what kind of traffic is hitting your node
+
+```
+#!/bin/bash
+
+watch -n 1 iptables -n -v -L "${1}"
+```
+
+This software repository is provided “as is". Use the software at your own risk.
+
