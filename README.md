@@ -2,19 +2,19 @@
 
 **Use at your own risk: While this is tested to work well, it's early stage software used for testing and experiments.**
 
-This small program creates ipsets and iptables rules for nodes in the Solana network. 
+This small program classifies incoming Solana network traffic and creates ipsets and iptables firewall rules. It can be used by validators to restrict access to the TPU & TPU-Forward ports according to the class of traffic.
 
-By default, it creates and maintains the following ipsets:
+By default, it listens to Gossip and creates/maintains the following classes of ipsets:
 
  - `solana-gossip`: all ips visible in gossip
  - `solana-unstaked`: unstaked nodes visible in gossip
  - `solana-staked`: staked nodes visible in gossip
- - `solana-min-staked`: nodes visible in gossip with >0.03% of stake
- - `solana-high-staked`: nodes visible in gossip with >0.3% of stake
+ - `solana-min-staked`: nodes visible in gossip with minimal stake
+ - `solana-high-staked`: nodes visible in gossip with significant stake
 
-These sets will be kept up to date for as long as this software runs. On exit it will clean up the sets.
+These sets will be kept up to date for as long as the software runs. On exit it will clean up the sets.
 
-You can modify these categories by editing `config.yml`, setting the minimum stake percentages for each category. The validator will be placed in the largest category that applies to it.
+You can modify these categories by editing `config.yml`, setting the minimum stake percentages for each category. The sender will be placed in the largest category that applies to it.
 
 It also uses the PREROUTING tables to permanently mark traffic from these sets of IPs on the local nodes . This can be used in later traffic rules. By default the following fwmarks are set:
 
@@ -58,18 +58,6 @@ Usage of ./tpu-traffic-classifier:
   -vote-policy string
     	the default iptables policy for votes, default is passthrough
 ```
-
-## Recommended RPC node config
-
-RPC nodes shouldn't expose TPU and TPUfwd (as they don't process TPU traffic into blocks) and should only receive traffic via sendTransaction.
-
-You can use this tool to enforce this kind of firewall:
-
-```
-./tpu-traffic-classifier -config-file config.yml -our-localhost -tpu-policy DROP -fwd-policy DROP -tpu-quic-policy DROP -update=false
-```
-
-This mode will not keep the ipsets updated and will only create firewall rules for your RPC node to not accept traffic via TPU and TPUfwd.
 
 ## Sample config.yml
 
@@ -145,7 +133,6 @@ iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-staked src -j D
 iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-unstaked src -j DROP
 iptables -A solana-tpu-custom-quic-fwd -m set ! --match-set solana-gossip src -j DROP
 iptables -A solana-tpu-custom-quic-fwd -j DROP
-
 ```
 
 If you would only allow nodes in gossip to send to your TPU:
@@ -162,7 +149,6 @@ iptables -A solana-tpu-custom-quic-fwd -m set ! --match-set solana-gossip src -j
 ```
 
 These rules will only work when this utility is running. When it is not running, the TPU port will be open as usual.
-
 
 ## Rate limiting example
 
@@ -283,6 +269,19 @@ You can create a script to watch the traffic go through all the various "stake c
 
 watch -n 1 iptables -n -v -L "${1}"
 ```
+
+## Recommended RPC node config
+
+RPC nodes shouldn't expose TPU and TPUfwd (as they don't process TPU traffic into blocks) and should only receive traffic via sendTransaction.
+
+You can use this tool to enforce this kind of firewall:
+
+```
+./tpu-traffic-classifier -config-file config.yml -our-localhost -tpu-policy DROP -fwd-policy DROP -tpu-quic-policy DROP -update=false
+```
+
+This mode will not keep the ipsets updated and will only create firewall rules for your RPC node to not accept traffic via TPU and TPUfwd.
+
 
 This software repository is provided “as is". Use the software at your own risk.
 
