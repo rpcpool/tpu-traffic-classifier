@@ -32,25 +32,29 @@ Build: `go build -o tpu-traffic-classifier .`
 ```
 Usage of ./tpu-traffic-classifier:
   -config-file string
-        configuration file (default "config.yml")
+    	configuration file (default "config.yml")
   -fetch-identity
-        fetch identity from rpc
+    	fetch identity from rpc
   -fwd-policy string
-        the default iptables policy for tpu forward, default is passthrough
+    	the default iptables policy for tpu forward, default is passthrough
   -our-localhost
-        use localhost:8899 for rpc and fetch identity from that rpc
+    	use localhost:8899 for rpc and fetch identity from that rpc
   -pubkey string
-        validator-pubkey
+    	validator-pubkey
   -rpc-uri string
-        the rpc uri to use (default "https://api.mainnet-beta.solana.com")
+    	the rpc uri to use (default "https://api.mainnet-beta.solana.com")
+  -sleep duration
+    	how long to sleep between updates (default 10s)
   -tpu-policy string
-        the default iptables policy for tpu, default is passthrough
-  -tpu-quic-policy
-        the default iptables policy for quic, default is passthrough
+    	the default iptables policy for tpu, default is passthrough
+  -tpu-quic-fwd-policy string
+    	the default iptables policy for quic tpu fwd, default is passthrough
+  -tpu-quic-policy string
+    	the default iptables policy for quic tpu, default is passthrough
   -update
-        whether or not to keep ipsets updated (default true)
+    	whether or not to keep ipsets updated (default true)
   -vote-policy string
-        the default iptables policy for votes, default is passthrough
+    	the default iptables policy for votes, default is passthrough
 ```
 
 ## Recommended RPC node config
@@ -78,8 +82,11 @@ staked_classes:
   - name: solana-staked
     stake_percentage: 0
     fwmark: 3
+  - name: solana-min-staked
+    stake_percentage: 0.00003 # 15k stake and up - 0.003%
+    fwmark: 5
   - name: solana-high-staked 
-    stake_percentage: 0.0003 # 100k stake - 0.03%
+    stake_percentage: 0.0003 # 150k stake and up - 0.03%
     fwmark: 9
 ```
 
@@ -94,28 +101,62 @@ For instance if you wanted to temporarily close TPU ports you can run:
 ```
 iptables -A solana-tpu-custom -j DROP
 ```
-
 This will drop all traffic to the tpu port.
 
-If you would like to drop all traffic to TPU port apart from validators (staked nodes):
+If you would like to drop all traffic to UDP TPU port but allow UDP TPU forwards from staked validators:
 
 ```
-iptables -A solana-tpu-custom -m set --match-set solana-staked src -j ACCEPT
-iptables -A solana-tpu-custom -m set --match-set solana-high-staked src -j ACCEPT
+# Old UDP TPU
+iptables -N solana-tpu-custom || true
+iptables -F solana-tpu-custom
+iptables -A solana-tpu-custom -m set --match-set solana-high-staked src -j DROP
+iptables -A solana-tpu-custom -m set --match-set solana-min-staked src -j DROP
+iptables -A solana-tpu-custom -m set --match-set solana-staked src -j DROP
+iptables -A solana-tpu-custom -m set --match-set solana-unstaked src -j DROP
+iptables -A solana-tpu-custom -m set ! --match-set solana-gossip src -j DROP
 iptables -A solana-tpu-custom -j DROP
+# Old UDP TPU Forwards
+iptables -N solana-tpu-custom-fwd || true
+iptables -F solana-tpu-custom-fwd
+iptables -A solana-tpu-custom-fwd -m set --match-set solana-high-staked src -j ACCEPT
+iptables -A solana-tpu-custom-fwd -m set --match-set solana-min-staked src -j ACCEPT
+iptables -A solana-tpu-custom-fws -m set --match-set solana-staked src -j ACCEPT
+iptables -A solana-tpu-custom-fwd -m set --match-set solana-unstaked src -j DROP
+iptables -A solana-tpu-custom-fwd -m set --match-set solana-gossip src -j DROP
+iptables -A solana-tpu-custom-fwd -m set ! --match-set solana-gossip src -j DROP
+iptables -A solana-tpu-custom-fwd -j DROP
+# New QUIC TPU
+iptables -N solana-tpu-custom-quic || true
+iptables -F solana-tpu-custom-quic
+iptables -A solana-tpu-custom-quic -m set --match-set solana-high-staked src -j ACCEPT
+iptables -A solana-tpu-custom-quic -m set --match-set solana-min-staked src -j ACCEPT
+iptables -A solana-tpu-custom-quic -m set --match-set solana-staked src -j ACCEPT
+iptables -A solana-tpu-custom-quic -m set --match-set solana-unstaked src -j ACCEPT
+iptables -A solana-tpu-custom-quic -m set ! --match-set solana-gossip src -j DROP # this will drop all QUIC connections from nodes not in gossip
+iptables -A solana-tpu-custom-quic -j DROP
+# New QUIC TPU Forwards
+iptables -N solana-tpu-custom-quic-fwd || true
+iptables -F solana-tpu-custom-quic-fwd
+iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-high-staked src -j ACCEPT
+iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-min-staked src -j ACCEPT
+iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-staked src -j DROP
+iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-unstaked src -j DROP
+iptables -A solana-tpu-custom-quic-fwd -m set ! --match-set solana-gossip src -j DROP
+iptables -A solana-tpu-custom-quic-fwd -j DROP
+
 ```
 
 If you would only allow nodes in gossip to send to your TPU:
 
 ```
-iptables -A solana-tpu-custom -m set --match-set solana-gossip src -j ACCEPT
-iptables -A solana-tpu-custom -j DROP
+iptables -A solana-tpu-custom-quic -m set --match-set solana-gossip src -j ACCEPT
+iptables -A solana-tpu-custom-quic -j DROP
 ```
 
-Log all traffic from nodes not in gossip to you TPU fwd:
+Log all traffic from nodes not in gossip to you QUIC TPU fwd:
 
 ```
-iptables -A solana-tpu-custom-fwd -m set ! --match-set solana-gossip src -j LOG --log-prefix 'TPUfwd:not in gossip:' --log-level info
+iptables -A solana-tpu-custom-quic-fwd -m set ! --match-set solana-gossip src -j LOG --log-prefix 'TPUfwd:not in gossip:' --log-level info
 ```
 
 These rules will only work when this utility is running. When it is not running, the TPU port will be open as usual.
@@ -148,8 +189,6 @@ iptables -A solana-tpu-custom-fwd -m set --match-set solana-gossip src -j ACCEPT
 iptables -A solana-tpu-custom-fwd -j LOG --log-prefix "TPUfwd:" --log-level info                                                                             
 iptables -A solana-tpu-custom-fwd -j DROP
 ```
-
-
 
 ## Traffic shaping
 
