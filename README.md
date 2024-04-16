@@ -96,7 +96,7 @@ staked_classes:
 
 **If you do not provide a validator pubkey, then all UDP traffic will pass through these firewall rules**.
 
-You can add rules to `solana-tpu-custom` (or `solana-tpu-custom-vote`, `solana-tpu-custom-fwd`). This chain will persist between invocations of this tool (it's not cleaned out). If you provide your validator pubkey, then the tool will look up your TPU port and send all incoming UDP TPU traffic to this port to the `solana-tpu-custom` chain.
+You can add rules to `solana-tpu-custom` (or `solana-tpu-custom-quic`, `solana-tpu-custom-quic-fwd`). This chain will persist between invocations of this tool (it's not cleaned out). If you provide your validator pubkey, then the tool will look up your TPU port and send all incoming UDP TPU traffic to this port to the `solana-tpu-custom` chain. Same for the quic and quic-fwd ports.
 
 For instance if you wanted to temporarily close TPU ports you can run:
 
