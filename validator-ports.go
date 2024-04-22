@@ -37,7 +37,7 @@ func NewValidatorPorts(tpu uint16, tpu_quic uint16) *ValidatorPorts {
 		TPU:     tpu,
 		TPUfwd:  tpu + 1,
 		TPUvote: tpu + 2,
-		TPUquic: tpa_quic,
+		TPUquic: tpu_quic,
 		TPUquicfwd: tpu_quic+1,
 	}
 }

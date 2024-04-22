@@ -31,24 +31,23 @@ type PeerNode struct {
 }
 
 var (
-	flagConfigFile        = flag.String("config-file", "config.yml", "configuration file")
-	flagPubkey            = flag.String("pubkey", "", "validator-pubkey")
-	flagRpcUri            = flag.String("rpc-uri", "https://api.mainnet-beta.solana.com", "the rpc uri to use")
-	flagRpcIdentity       = flag.Bool("fetch-identity", false, "fetch identity from rpc")
-	flagOurLocalhost      = flag.Bool("our-localhost", false, "use localhost:8899 for rpc and fetch identity from that rpc")
-	flagDefaultTPUPolicy  = flag.String("tpu-policy", "", "the default iptables policy for tpu, default is passthrough")
-	flagDefaultTPUQuicPolicy  = flag.String("tpu-quic-policy", "", "the default iptables policy for quic tpu, default is passthrough")
-	flagDefaultTPUQuicfwdPolicy  = flag.String("tpu-quic-fwd-policy", "", "the default iptables policy for quic tpu fwd, default is passthrough")
-	flagDefaultFWDPolicy  = flag.String("fwd-policy", "", "the default iptables policy for tpu forward, default is passthrough")
-	flagDefaultVotePolicy = flag.String("vote-policy", "", "the default iptables policy for votes, default is passthrough")
-	flagUpdateIpSets      = flag.Bool("update", true, "whether or not to keep ipsets updated")
-  flagSleep             = flag.Duration("sleep", 10*time.Second, "how long to sleep between updates")
+	flagConfigFile              = flag.String("config-file", "config.yml", "configuration file")
+	flagPubkey                  = flag.String("pubkey", "", "validator-pubkey")
+	flagRpcUri                  = flag.String("rpc-uri", "https://api.mainnet-beta.solana.com", "the rpc uri to use")
+	flagRpcIdentity             = flag.Bool("fetch-identity", false, "fetch identity from rpc")
+	flagOurLocalhost            = flag.Bool("our-localhost", false, "use localhost:8899 for rpc and fetch identity from that rpc")
+	flagDefaultTPUPolicy        = flag.String("tpu-policy", "", "the default iptables policy for tpu, default is passthrough")
+	flagDefaultTPUQuicPolicy    = flag.String("tpu-quic-policy", "", "the default iptables policy for quic tpu, default is passthrough")
+	flagDefaultTPUQuicfwdPolicy = flag.String("tpu-quic-fwd-policy", "", "the default iptables policy for quic tpu fwd, default is passthrough")
+	flagDefaultFWDPolicy        = flag.String("fwd-policy", "", "the default iptables policy for tpu forward, default is passthrough")
+	flagDefaultVotePolicy       = flag.String("vote-policy", "", "the default iptables policy for votes, default is passthrough")
+	flagUpdateIpSets            = flag.Bool("update", true, "whether or not to keep ipsets updated")
+	flagSleep                   = flag.Duration("sleep", 10*time.Second, "how long to sleep between updates")
 
 	mangleChain       = "solana-nodes"
 	filterChain       = "solana-tpu"
 	filterChainCustom = "solana-tpu-custom"
 	gossipSet         = "solana-gossip"
-
 
 	quit = make(chan os.Signal)
 )
@@ -387,7 +386,6 @@ func main() {
 			context.TODO(),
 		)
 
-
 		if err != nil {
 			log.Println("couldn't load cluster nodes", err)
 			time.Sleep(time.Second * 5)
@@ -400,20 +398,20 @@ func main() {
 		for _, node := range nodes {
 			if *flagPubkey != "" {
 				if *flagPubkey == node.Pubkey.String() {
-          spew.Dump(node)
+					spew.Dump(node)
 					// If this is our node, configure the TPU forwarding rules
 					if node.TPU != nil {
 						tpuAddr := *node.TPU
-            quicTPUAddr := *node.TPUQUIC
+						quicTPUAddr := *node.TPUQUIC
 						_, tpu_port, err := net.SplitHostPort(tpuAddr)
-						_, tpu_quic_port, errq := net.SplitHostPort(tpuAddr)
+						_, tpu_quic_port, errq := net.SplitHostPort(quicTPUAddr)
 						if err == nil && errq == nil {
 							port, err := strconv.Atoi(tpu_port)
 							quic_port, errq := strconv.Atoi(tpu_quic_port)
 							if err == nil && errq == nil {
 								if validatorPorts != nil {
 									if validatorPorts.TPU != uint16(port) ||
-                      validatorPorts.TPUQUIC != uint16(quic_port) {
+										validatorPorts.TPUquic != uint16(quic_port) {
 										// TPU has changed, clean up before re-adding
 										deleteMangleInputRules(ipt, validatorPorts.TPUstr(), mangleChain, filterChain)
 										deleteMangleInputRules(ipt, validatorPorts.Fwdstr(), mangleChain, filterChain+"-fwd")
