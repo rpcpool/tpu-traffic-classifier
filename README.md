@@ -110,7 +110,7 @@ iptables -N solana-tpu-custom-fwd || true
 iptables -F solana-tpu-custom-fwd
 iptables -A solana-tpu-custom-fwd -m set --match-set solana-high-staked src -j ACCEPT
 iptables -A solana-tpu-custom-fwd -m set --match-set solana-min-staked src -j ACCEPT
-iptables -A solana-tpu-custom-fws -m set --match-set solana-staked src -j ACCEPT
+iptables -A solana-tpu-custom-fwd -m set --match-set solana-staked src -j ACCEPT
 iptables -A solana-tpu-custom-fwd -m set --match-set solana-unstaked src -j DROP
 iptables -A solana-tpu-custom-fwd -m set --match-set solana-gossip src -j DROP
 iptables -A solana-tpu-custom-fwd -m set ! --match-set solana-gossip src -j DROP
