@@ -1,4 +1,4 @@
-module github.com/rpcpool/tpu-traffic-classes
+module github.com/rpcpool/tpu-traffic-classifier
 
 go 1.22.0
 
