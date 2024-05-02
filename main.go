@@ -330,7 +330,6 @@ func main() {
 
 	//Custom nodes are static, no need to retrieve them from gossip
 	for _, node := range cfg.CustomNodes {
-		ipset.Add(gossipSet, node.Ip) // add all addresses to the gossipset
 		ipset.Add(cfg.CustomNodeClass.Name, node.Ip)
 
 	}
