@@ -44,7 +44,7 @@ func (i *trustedProviders) Set(value string) error {
 var flagProviders trustedProviders
 var (
 	flagConfigFile              = flag.String("config-file", "config.yml", "configuration file")
-	flagPubkey                  = flag.String("pubkey", "", "validato r-pubkey")
+	flagPubkey                  = flag.String("pubkey", "", "validator-pubkey")
 	flagRpcUri                  = flag.String("rpc-uri", "https://api.mainnet-beta.solana.com", "the rpc uri to use")
 	flagRpcIdentity             = flag.Bool("fetch-identity", false, "fetch identity from rpc")
 	flagOurLocalhost            = flag.Bool("our-localhost", false, "use localhost:8899 for rpc and fetch identity from that rpc")
