@@ -45,7 +45,7 @@ func (i *trustedProviders) Set(value string) error {
 	return nil
 }
 
-var flagProviders trustedProviders
+var flagProviders trustedProviders = []string{}
 var (
 	flagConfigFile              = flag.String("config-file", "config.yml", "configuration file")
 	flagPubkey                  = flag.String("pubkey", "", "validator-pubkey")
@@ -239,7 +239,12 @@ func main() {
 		}
 		var conf TPConfig
 		dec := yaml.NewDecoder(f)
-		err = dec.Decode(conf)
+		err = dec.Decode(&conf)
+		if err != nil {
+			log.Println("couldn't decode trusted provider config file", *flagConfigFile, err)
+			os.Exit(1)
+		}
+
 		for _, node := range conf.Nodes {
 			cfg.CustomNodes = append(cfg.CustomNodes, node)
 		}
@@ -365,7 +370,11 @@ func main() {
 
 	//Custom nodes are static, no need to retrieve them from gossip
 	for _, node := range cfg.CustomNodes {
-		ipset.Add(cfg.CustomNodeClass.Name, node.Ip)
+		log.Println("Adding custom node: ", node.Name, " with IP: ", node.Ip, " to set: ", cfg.CustomNodeClass.Name)
+		err := ipset.Add(cfg.CustomNodeClass.Name, node.Ip)
+		if err != nil {
+			log.Println("could not add node to ipset: ", err)
+		}
 
 	}
 
@@ -528,7 +537,7 @@ func main() {
 					added := false
 					for _, class := range cfg.Classes {
 						// Add to the highest class it matches
-						for _, addr := range addresses {
+						for _, addr := range addresses[1:] {
 							ipset.Add(gossipSet, addr) // add all addresses to the gossipset
 
 							if percent > class.Stake && !added {
@@ -548,7 +557,7 @@ func main() {
 					for _, addr := range addresses {
 						ipset.Add(gossipSet, addr) // add all addresses to the gossipset
 						ipset.Add(cfg.UnstakedClass.Name, addr)
-						for _, class := range cfg.Classes {
+						for _, class := range cfg.Classes[1:] {
 							if class.Name != cfg.UnstakedClass.Name {
 								ipset.Del(class.Name, addr)
 							}
