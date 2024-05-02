@@ -245,7 +245,7 @@ func main() {
 	cfg.UnstakedClass.Stake = -1
 	cfg.Classes = append(cfg.Classes, cfg.UnstakedClass)
 
-	cfg.CustomNodeClass.Stake = 1
+	cfg.CustomNodeClass.Stake = 100
 	cfg.Classes = append(cfg.Classes, cfg.CustomNodeClass)
 	// Sort the classes by stake weight
 	sort.SliceStable(cfg.Classes, func(i, j int) bool {
