@@ -14,3 +14,14 @@ staked_classes:
   - name: solana-high-staked
     stake_percentage: 0.0003
     fwmark: 9
+
+# Custom nodes class, i.e. an allowlist for nodes not in gossip
+custom_node_class:
+  name: custom-nodes
+  fwmark: 11
+
+custom_node_entries:
+  - name: my_rpc_node
+    ip: 1.2.3.4
+  - name: my_other_node
+    ip: 4.5.6.7

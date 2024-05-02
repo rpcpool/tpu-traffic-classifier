@@ -58,15 +58,22 @@ type TrafficClass struct {
 	FwMark uint64  `yaml:"fwmark,omitempty"`
 }
 
+type CustomNode struct {
+	Name string `yaml:"name"`
+	Ip   string `yaml:"ip"`
+}
+
 type Config struct {
-	Classes       []TrafficClass `yaml:"staked_classes"`
-	UnstakedClass TrafficClass   `yaml:"unstaked_class"`
+	Classes         []TrafficClass `yaml:"staked_classes"`
+	UnstakedClass   TrafficClass   `yaml:"unstaked_class"`
+	CustomNodeClass TrafficClass   `yaml:"custom_node_class"`
+	CustomNodes     []CustomNode   `yaml:"custom_node_entries"`
 }
 
 func createChain(ipt *iptables.IPTables, table string, filterChain string, policy string) {
 	exists, err := ipt.ChainExists(table, filterChain)
 	if err != nil {
-		log.Println("couldn't check existance", filterChain, err)
+		log.Println("couldn't check existence", filterChain, err)
 		os.Exit(1)
 	}
 	if !exists {
@@ -207,6 +214,8 @@ func main() {
 	cfg.UnstakedClass.Stake = -1
 	cfg.Classes = append(cfg.Classes, cfg.UnstakedClass)
 
+	cfg.CustomNodeClass.Stake = 1
+	cfg.Classes = append(cfg.Classes, cfg.CustomNodeClass)
 	// Sort the classes by stake weight
 	sort.SliceStable(cfg.Classes, func(i, j int) bool {
 		return cfg.Classes[i].Stake > cfg.Classes[j].Stake
@@ -317,6 +326,13 @@ func main() {
 	err = ipt.Insert("filter", filterChain+"-quic-fwd", 1, "-j", filterChainCustom+"-quic-fwd")
 	if err != nil {
 		log.Println("could not add custom rules chain: ", err)
+	}
+
+	//Custom nodes are static, no need to retrieve them from gossip
+	for _, node := range cfg.CustomNodes {
+		ipset.Add(gossipSet, node.Ip) // add all addresses to the gossipset
+		ipset.Add(cfg.CustomNodeClass.Name, node.Ip)
+
 	}
 
 	for {
