@@ -11,6 +11,7 @@ By default, it listens to Gossip and creates/maintains the following classes of 
  - `solana-staked`: staked nodes visible in gossip
  - `solana-min-staked`: nodes visible in gossip with minimal stake
  - `solana-high-staked`: nodes visible in gossip with significant stake
+ - `custom-nodes` : custom peer nodes
 
 These sets will be kept up to date for as long as the software runs. On exit it will clean up the sets.
 
@@ -22,6 +23,7 @@ It also uses the PREROUTING tables to permanently mark traffic from these sets o
  - `3`: staked
  - `5`: min staked > 15K
  - `9`: high staked > 150K
+ - `11`: custom nodes
 
 If you provide you validator pubkey it will assume that your validator runs on localhost and it will lookup the TPU port of the validator and enable the firewalling rules. If you do not provide your validator pubkey, all UDP traffic passing through this host will be passed through the chains created by this tool.
 
@@ -78,6 +80,17 @@ staked_classes:
   - name: solana-high-staked 
     stake_percentage: 0.0003 # 150k stake and up - 0.03%
     fwmark: 9
+    
+# Custom nodes class, i.e. an allowlist for nodes not in gossip
+custom_node_class:
+  name: custom-nodes
+  fwmark: 11
+
+custom_node_entries:
+  - name: my_rpc_node
+    ip: 1.2.3.4
+  - name: my_other_node
+    ip: 4.5.6.7
 ```
 
 ## Firewalling
@@ -93,7 +106,7 @@ iptables -A solana-tpu-custom -j DROP
 ```
 This will drop all traffic to the tpu port.
 
-If you would like to drop all traffic to UDP TPU port but allow UDP TPU and quic forwards from staked validators and allow all QUIC connections except from nodes in gossip:
+If you would like to drop all traffic to UDP TPU port but allow UDP TPU and QUIC forwards from staked validators and allow all QUIC connections except from nodes in gossip:
 
 ```
 # Old UDP TPU
@@ -108,6 +121,7 @@ iptables -A solana-tpu-custom -j DROP
 # Old UDP TPU Forwards
 iptables -N solana-tpu-custom-fwd || true
 iptables -F solana-tpu-custom-fwd
+iptables -A solana-tpu-custom-fwd -m set --match-set custom-nodes src -j ACCEPT
 iptables -A solana-tpu-custom-fwd -m set --match-set solana-high-staked src -j ACCEPT
 iptables -A solana-tpu-custom-fwd -m set --match-set solana-min-staked src -j ACCEPT
 iptables -A solana-tpu-custom-fwd -m set --match-set solana-staked src -j ACCEPT
@@ -118,6 +132,7 @@ iptables -A solana-tpu-custom-fwd -j DROP
 # New QUIC TPU
 iptables -N solana-tpu-custom-quic || true
 iptables -F solana-tpu-custom-quic
+iptables -A solana-tpu-custom-quic -m set --match-set custom-nodes src -j ACCEPT
 iptables -A solana-tpu-custom-quic -m set --match-set solana-high-staked src -j ACCEPT
 iptables -A solana-tpu-custom-quic -m set --match-set solana-min-staked src -j ACCEPT
 iptables -A solana-tpu-custom-quic -m set --match-set solana-staked src -j ACCEPT
@@ -127,6 +142,7 @@ iptables -A solana-tpu-custom-quic -j DROP
 # New QUIC TPU Forwards
 iptables -N solana-tpu-custom-quic-fwd || true
 iptables -F solana-tpu-custom-quic-fwd
+iptables -A solana-tpu-custom-quic-fwd -m set --match-set custom-nodes src -j ACCEPT
 iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-high-staked src -j ACCEPT
 iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-min-staked src -j ACCEPT
 iptables -A solana-tpu-custom-quic-fwd -m set --match-set solana-staked src -j DROP

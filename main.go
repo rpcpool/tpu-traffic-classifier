@@ -30,6 +30,22 @@ type PeerNode struct {
 	Stake      uint64
 }
 
+type trustedProviders []string
+
+func (i *trustedProviders) String() string {
+	var str string = ""
+	for _, v := range *i {
+		str += v + ","
+	}
+	return str
+}
+
+func (i *trustedProviders) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
+var flagProviders trustedProviders
 var (
 	flagConfigFile              = flag.String("config-file", "config.yml", "configuration file")
 	flagPubkey                  = flag.String("pubkey", "", "validator-pubkey")
@@ -58,15 +74,26 @@ type TrafficClass struct {
 	FwMark uint64  `yaml:"fwmark,omitempty"`
 }
 
+type CustomNode struct {
+	Name string `yaml:"name"`
+	Ip   string `yaml:"ip"`
+}
+
+type TPConfig struct {
+	Nodes []CustomNode `yaml:"nodes"`
+}
+
 type Config struct {
-	Classes       []TrafficClass `yaml:"staked_classes"`
-	UnstakedClass TrafficClass   `yaml:"unstaked_class"`
+	Classes         []TrafficClass `yaml:"staked_classes"`
+	UnstakedClass   TrafficClass   `yaml:"unstaked_class"`
+	CustomNodeClass TrafficClass   `yaml:"custom_node_class"`
+	CustomNodes     []CustomNode   `yaml:"custom_node_entries"`
 }
 
 func createChain(ipt *iptables.IPTables, table string, filterChain string, policy string) {
 	exists, err := ipt.ChainExists(table, filterChain)
 	if err != nil {
-		log.Println("couldn't check existance", filterChain, err)
+		log.Println("couldn't check existence", filterChain, err)
 		os.Exit(1)
 	}
 	if !exists {
@@ -177,6 +204,7 @@ func setUpdate(c <-chan os.Signal) {
 }
 
 func main() {
+	flag.Var(&flagProviders, "trusted-providers", "[repeated] files for custom nodes. ex: -trusted-providers ./trusted_providers/helius.yml")
 	flag.Parse()
 
 	// Set validator ports to nil to start with
@@ -203,10 +231,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	for _, tp_file := range flagProviders {
+		f, err := os.Open(tp_file)
+		if err != nil {
+			log.Println("couldn't open config file", *flagConfigFile, err)
+			os.Exit(1)
+		}
+		var conf TPConfig
+		dec := yaml.NewDecoder(f)
+		err = dec.Decode(conf)
+		for _, node := range conf.Nodes {
+			cfg.CustomNodes = append(cfg.CustomNodes, node)
+		}
+	}
+
 	// Special traffic class for unstaked nodes visible in gossip (e.g. RPC)
 	cfg.UnstakedClass.Stake = -1
 	cfg.Classes = append(cfg.Classes, cfg.UnstakedClass)
 
+	cfg.CustomNodeClass.Stake = 100
+	cfg.Classes = append(cfg.Classes, cfg.CustomNodeClass)
 	// Sort the classes by stake weight
 	sort.SliceStable(cfg.Classes, func(i, j int) bool {
 		return cfg.Classes[i].Stake > cfg.Classes[j].Stake
@@ -317,6 +361,12 @@ func main() {
 	err = ipt.Insert("filter", filterChain+"-quic-fwd", 1, "-j", filterChainCustom+"-quic-fwd")
 	if err != nil {
 		log.Println("could not add custom rules chain: ", err)
+	}
+
+	//Custom nodes are static, no need to retrieve them from gossip
+	for _, node := range cfg.CustomNodes {
+		ipset.Add(cfg.CustomNodeClass.Name, node.Ip)
+
 	}
 
 	for {
