@@ -18,7 +18,7 @@ staked_classes:
 # Custom nodes class, i.e. an allowlist for nodes not in gossip
 custom_node_class:
   name: custom-nodes
-  fwmark: 7
+  fwmark: 11
 
 custom_node_entries:
   - name: snappy
