@@ -30,9 +30,21 @@ type PeerNode struct {
 	Stake      uint64
 }
 
+type trustedProviders []string
+
+func (i *trustedProviders) String() string {
+	return "my string representation"
+}
+
+func (i *trustedProviders) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
+var flagProviders trustedProviders
 var (
 	flagConfigFile              = flag.String("config-file", "config.yml", "configuration file")
-	flagPubkey                  = flag.String("pubkey", "", "validator-pubkey")
+	flagPubkey                  = flag.String("pubkey", "", "validato r-pubkey")
 	flagRpcUri                  = flag.String("rpc-uri", "https://api.mainnet-beta.solana.com", "the rpc uri to use")
 	flagRpcIdentity             = flag.Bool("fetch-identity", false, "fetch identity from rpc")
 	flagOurLocalhost            = flag.Bool("our-localhost", false, "use localhost:8899 for rpc and fetch identity from that rpc")
@@ -61,6 +73,10 @@ type TrafficClass struct {
 type CustomNode struct {
 	Name string `yaml:"name"`
 	Ip   string `yaml:"ip"`
+}
+
+type TPConfig struct {
+	Nodes []CustomNode `yaml:"nodes"`
 }
 
 type Config struct {
@@ -184,6 +200,7 @@ func setUpdate(c <-chan os.Signal) {
 }
 
 func main() {
+	flag.Var(&flagProviders, "trusted-providers", "[repeated] files for custom nodes. ex: -trusted-providers ./trusted_providers/helius.yml")
 	flag.Parse()
 
 	// Set validator ports to nil to start with
@@ -208,6 +225,20 @@ func main() {
 	if err != nil {
 		log.Println("couldn't decode config file", *flagConfigFile, err)
 		os.Exit(1)
+	}
+
+	for _, tp_file := range flagProviders {
+		f, err := os.Open(tp_file)
+		if err != nil {
+			log.Println("couldn't open config file", *flagConfigFile, err)
+			os.Exit(1)
+		}
+		var conf TPConfig
+		dec := yaml.NewDecoder(f)
+		err = dec.Decode(conf)
+		for _, node := range conf.Nodes {
+			cfg.CustomNodes = append(cfg.CustomNodes, node)
+		}
 	}
 
 	// Special traffic class for unstaked nodes visible in gossip (e.g. RPC)
