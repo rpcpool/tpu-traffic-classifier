@@ -1,5 +1,13 @@
 nodes:
-  - name: snappy
-    ip: 1.2.3.4
-  - name: sleepy
-    ip: 4.5.6.7
+  - name: helius-1
+    ip: 141.98.219.49
+  - name: helius-2
+    ip: 74.118.140.24
+  - name: helius-3
+    ip: 67.209.54.254
+  - name: helius-4
+    ip: 204.16.246.36
+  - name: helius-5
+    ip: 204.16.245.184
+  - name: helius-6
+    ip: 204.16.244.116
