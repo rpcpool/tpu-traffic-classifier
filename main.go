@@ -371,9 +371,14 @@ func main() {
 	//Custom nodes are static, no need to retrieve them from gossip
 	for _, node := range cfg.CustomNodes {
 		log.Println("Adding custom node: ", node.Name, " with IP: ", node.Ip, " to set: ", cfg.CustomNodeClass.Name)
-		err := ipset.Add(cfg.CustomNodeClass.Name, node.Ip)
+		err := ipset.Add(gossipSet, node.Ip)
+
 		if err != nil {
-			log.Println("could not add node to ipset: ", err)
+			log.Println("Failed to add node to gossip set: ", err)
+		}
+		cn := ipset.Add(cfg.CustomNodeClass.Name, node.Ip)
+		if cn != nil {
+			log.Println("Failed to add node to custom-nodes ", err)
 		}
 
 	}
