@@ -59,6 +59,8 @@ Usage of ./tpu-traffic-classifier:
     	whether or not to keep ipsets updated (default true)
   -vote-policy string
     	the default iptables policy for votes, default is passthrough
+  -trusted-providers [repeated] string
+     files to manage lists of custom nodes
 ```
 
 ## Sample config.yml
@@ -91,6 +93,16 @@ custom_node_entries:
     ip: 1.2.3.4
   - name: my_other_node
     ip: 4.5.6.7
+```
+
+## Sample Custom Providers file
+
+```
+nodes:
+  -name: my_node
+   ip: 1.2.3.4
+  -name: my_other_node
+   ip: 4.5.6.7
 ```
 
 ## Firewalling
