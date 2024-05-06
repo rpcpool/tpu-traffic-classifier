@@ -374,7 +374,7 @@ func main() {
 		}
 		cn := ipset.Add(cfg.CustomNodeClass.Name, node.Ip)
 		if cn != nil {
-			log.Println("Failed to add node to custom-nodes ", err)
+			log.Println("Failed to add node to set", cfg.CustomNodeClass.Name, err)
 		}
 
 	}
