@@ -33,11 +33,7 @@ type PeerNode struct {
 type trustedProviders []string
 
 func (i *trustedProviders) String() string {
-	var str string = ""
-	for _, v := range *i {
-		str += v + ","
-	}
-	return str
+	return strings.Join(string, ",")
 }
 
 func (i *trustedProviders) Set(value string) error {
